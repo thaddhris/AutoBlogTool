@@ -73,7 +73,13 @@ export interface Blog {
   updated_at: string;
 }
 
-export type PublishMode = "draft" | "scheduled" | "auto";
+// "auto"   = after generation, set scheduled_at = now + draft_hold_hours and let
+//            it auto-publish when the timer expires.
+// "manual" = after generation, leave the draft as-is. Admin must publish or
+//            schedule it explicitly. No auto-publish timer.
+export type PublishMode = "auto" | "manual";
+
+export type Publisher = "markdown" | "webflow";
 
 export interface Settings {
   groq_api_key: string;
@@ -82,11 +88,15 @@ export interface Settings {
   brand_tone: string;
   cron_secret: string;
   batch_size: number;
-  publish_interval_hours: number;
+  draft_hold_hours: number;
   publish_mode: PublishMode;
-  default_publisher: "markdown";
+  publisher: Publisher;
   words_target: number;
   image_provider: "placeholder";
+  // Webflow-specific (only used when publisher === "webflow")
+  webflow_token: string;
+  webflow_collection_id: string;
+  webflow_featured_default: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -97,9 +107,12 @@ export const DEFAULT_SETTINGS: Settings = {
     "Authoritative, technical-but-accessible, focused on industrial AI / IoT outcomes for plant operations leaders. Avoid hype; emphasize concrete value and ROI.",
   cron_secret: "",
   batch_size: 5,
-  publish_interval_hours: 24,
+  draft_hold_hours: 24,
   publish_mode: "auto",
-  default_publisher: "markdown",
+  publisher: "markdown",
   words_target: 1200,
   image_provider: "placeholder",
+  webflow_token: "",
+  webflow_collection_id: "",
+  webflow_featured_default: false,
 };

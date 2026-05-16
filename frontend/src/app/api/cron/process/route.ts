@@ -2,8 +2,10 @@ import { NextRequest } from "next/server";
 import { getSettings } from "@/lib/settings";
 import { processQueue } from "@/lib/queue";
 
-// POST is for cron triggers (gated by cron_secret).
-// GET is provided for manual "Run now" from the admin UI (same gate).
+// Queue tick. Call this from n8n (or any scheduler) on a slow cadence —
+// typically every 5–15 minutes. It picks the top `batch_size` pending
+// requests and generates drafts. If publish_mode = "auto" each draft is
+// stamped with `scheduled_at = now + draft_hold_hours`. It does NOT publish.
 async function run(request: NextRequest) {
   const settings = getSettings();
   if (settings.cron_secret) {

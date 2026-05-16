@@ -145,10 +145,17 @@ export function updateBlog(
   return getBlog(id);
 }
 
-export function dueScheduled(now = new Date()): Blog[] {
+/**
+ * Drafts whose auto-publish timer has elapsed. Includes legacy 'scheduled'
+ * rows from the old data model so they still get drained.
+ */
+export function dueDrafts(now = new Date()): Blog[] {
   const rows = db()
     .prepare(
-      `SELECT * FROM blogs WHERE status = 'scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= ?
+      `SELECT * FROM blogs
+       WHERE status IN ('draft','scheduled')
+         AND scheduled_at IS NOT NULL
+         AND scheduled_at <= ?
        ORDER BY scheduled_at ASC`,
     )
     .all(now.toISOString()) as BlogRow[];
