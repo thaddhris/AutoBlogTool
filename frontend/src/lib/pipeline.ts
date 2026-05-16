@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import { db, logEvent } from "./db";
 import { getSettings } from "./settings";
-import { llmJson } from "./ai";
+import { llmJson, llmText } from "./ai";
 import { retrieve, requestCorpusSnippet } from "./rag";
 import { slugify, blogJsonLd, faqJsonLd } from "./seo";
 import { generateBanner } from "./images";
@@ -9,23 +9,35 @@ import { getRequest, updateRequest } from "./requests";
 import { getBlogByRequest } from "./blogs";
 import { Blog } from "./types";
 
-const WRITER_SYSTEM = `You are a senior B2B content writer for an industrial AI / IIoT platform.
+// Generation is split into two LLM calls to avoid Groq's strict JSON mode
+// rejecting long markdown payloads that aren't perfectly escaped inside a
+// JSON string value:
+//   1. Outline call  → JSON metadata (title, meta, FAQ, keywords, outline)
+//   2. Body call     → plain markdown body, guided by the outline
+// This trades one extra round-trip for a much higher success rate.
+
+const OUTLINE_SYSTEM = `You are an SEO content strategist for an industrial AI / IIoT platform.
+Given a topic brief and source snippets, you produce blog post metadata and a section outline.
+Always respond with the exact JSON shape requested. No prose outside JSON.`;
+
+const BODY_SYSTEM = `You are a senior B2B content writer for an industrial AI / IIoT platform.
 You write SEO-optimized blog posts that read like a thoughtful human expert wrote them — concrete, useful, never robotic.
 Hard rules:
 - Use the supplied source snippets faithfully. Do not invent specific stats, customer names, or product features that aren't in the snippets, brand context, or topic brief.
-- Markdown only for the body. Use H2/H3 headings, short paragraphs, bullet lists, and a "Key takeaways" section near the end.
-- Include a clear call-to-action paragraph at the end.
-- Do not include the title as an H1 in the body — the platform renders it separately.
-- Always respond with the exact JSON shape requested. No prose outside JSON.`;
+- Output ONLY Markdown. No JSON, no preamble, no closing remarks.
+- Use H2 (##) for sections and H3 (###) for sub-sections. Short paragraphs, bullet lists where helpful.
+- Include a "## Key takeaways" section near the end.
+- Include a clear call-to-action paragraph at the very end.
+- DO NOT include the title as an H1 — the platform renders it separately.`;
 
-interface WriterOutput {
+interface OutlineOutput {
   title: string;
   meta_title: string;
   meta_desc: string;
   excerpt: string;
-  content_md: string;
   keywords: string[];
   tags: string[];
+  outline: { heading: string; bullets: string[] }[];
   faq: { q: string; a: string }[];
 }
 
@@ -63,7 +75,7 @@ export async function generateBlogForRequest(requestId: string): Promise<Blog> {
         ? `Resource excerpts:\n${fallback}`
         : "No supporting resources provided.";
 
-  const prompt = `Brand: ${settings.brand_name}
+  const briefBlock = `Brand: ${settings.brand_name}
 Brand voice: ${settings.brand_tone}
 
 ## Blog request
@@ -72,55 +84,105 @@ Topic / context: ${req.topic}
 ${req.keywords.length ? `Target keywords: ${req.keywords.join(", ")}` : ""}
 ${req.instructions ? `Additional instructions: ${req.instructions}` : ""}
 
-## Target length
-Approximately ${settings.words_target} words.
-
 ## Source material
-${sourceBlock}
+${sourceBlock}`;
 
-Write the blog post. Respond with JSON of shape:
+  // --- Step 1: outline + metadata as JSON ---
+  const outlinePrompt = `${briefBlock}
+
+Produce the blog post metadata and a section outline. Respond with JSON of shape:
 {
   "title": string,            // strong, SEO-aware title (≤ 70 chars ideal)
   "meta_title": string,       // ≤ 60 chars
   "meta_desc": string,        // 140–160 chars
   "excerpt": string,          // 1–2 sentence hook
-  "content_md": string,       // full body in markdown, NO H1
   "keywords": string[],       // 3–8 keywords / phrases
   "tags": string[],           // 2–5 short tags
-  "faq": [ { "q": string, "a": string } ]   // 3–5 FAQ items
+  "outline": [                // 4–7 sections (excluding intro), in order
+    { "heading": string, "bullets": string[] }  // 2–5 bullets per section
+  ],
+  "faq": [ { "q": string, "a": string } ]      // 3–5 FAQ items
 }
 No prose outside JSON.`;
 
-  let out: WriterOutput;
+  let outline: OutlineOutput;
   try {
-    out = await llmJson<WriterOutput>({
-      system: WRITER_SYSTEM,
-      prompt,
-      maxTokens: 6000,
+    outline = await llmJson<OutlineOutput>({
+      system: OUTLINE_SYSTEM,
+      prompt: outlinePrompt,
+      maxTokens: 2000,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     updateRequest(requestId, { status: "failed", last_error: msg });
-    logEvent("request.generate.fail", msg, { requestId });
+    logEvent("request.generate.fail", `outline: ${msg}`, { requestId });
     throw err;
   }
 
-  const banner = generateBanner({ title: out.title, brand: settings.brand_name });
-  const slug = await uniqueSlug(out.title);
+  // --- Step 2: full markdown body, guided by the outline ---
+  const outlineForBody = outline.outline
+    .map(
+      (s, i) =>
+        `${i + 1}. ${s.heading}\n${s.bullets.map((b) => `   - ${b}`).join("\n")}`,
+    )
+    .join("\n");
+  const bodyPrompt = `${briefBlock}
+
+## Approved title
+${outline.title}
+
+## Approved outline (follow this; each numbered item is an H2 section)
+${outlineForBody}
+
+## Target length
+Approximately ${settings.words_target} words total.
+
+Now write the full blog post body in Markdown.
+- Start with a 1–2 paragraph intro before the first ## heading.
+- Follow the outline order. Each numbered item becomes an H2 (##). Use H3 (###) for sub-points if needed.
+- End with a "## Key takeaways" bullet list and then a final CTA paragraph.
+- Do NOT include the title as an H1.
+- Do NOT include any text outside the markdown body (no JSON, no prefaces).`;
+
+  let body: string;
+  try {
+    body = await llmText({
+      system: BODY_SYSTEM,
+      prompt: bodyPrompt,
+      maxTokens: 5000,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    updateRequest(requestId, { status: "failed", last_error: msg });
+    logEvent("request.generate.fail", `body: ${msg}`, { requestId });
+    throw err;
+  }
+
+  // Strip accidental leading H1 (some models add it even when told not to)
+  body = body.replace(/^\s*#\s+[^\n]+\n+/, "");
+  // Some models wrap in ```markdown … ``` — peel that
+  body = body
+    .replace(/^```(?:markdown|md)?\s*\n/, "")
+    .replace(/\n```\s*$/, "")
+    .trim();
+
+  const banner = generateBanner({
+    title: outline.title,
+    brand: settings.brand_name,
+  });
+  const slug = await uniqueSlug(outline.title);
   const id = nanoid(12);
   const schema = {
     blog: blogJsonLd({
-      title: out.title,
-      description: out.meta_desc,
+      title: outline.title,
+      description: outline.meta_desc,
       url: `/blog/${slug}`,
       brand: settings.brand_name,
       image: banner.url,
     }),
-    faq: faqJsonLd(out.faq),
+    faq: faqJsonLd(outline.faq),
   };
 
-  // Default to draft. The queue/cron step decides whether to schedule or
-  // auto-publish based on settings.publish_mode.
   db()
     .prepare(
       `INSERT INTO blogs (id, request_id, title, slug, excerpt, content_md, meta_title, meta_desc,
@@ -131,22 +193,22 @@ No prose outside JSON.`;
     .run(
       id,
       requestId,
-      out.title,
+      outline.title,
       slug,
-      out.excerpt,
-      out.content_md,
-      out.meta_title,
-      out.meta_desc,
-      JSON.stringify(out.keywords ?? []),
-      JSON.stringify(out.tags ?? []),
-      JSON.stringify(out.faq ?? []),
+      outline.excerpt,
+      body,
+      outline.meta_title,
+      outline.meta_desc,
+      JSON.stringify(outline.keywords ?? []),
+      JSON.stringify(outline.tags ?? []),
+      JSON.stringify(outline.faq ?? []),
       JSON.stringify(schema),
       banner.url,
       banner.alt,
     );
 
   updateRequest(requestId, { status: "draft", blog_id: id, last_error: null });
-  logEvent("request.generate.ok", out.title, { requestId, blogId: id });
+  logEvent("request.generate.ok", outline.title, { requestId, blogId: id });
   const blog = getBlogByRequest(requestId);
   if (!blog) throw new Error("Blog persisted but could not be re-read");
   return blog;
