@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listBlogs } from "@/lib/blogs";
 import { BlogStatusBadge } from "@/components/StatusBadge";
+import ClientTime from "@/components/ClientTime";
 
 export const dynamic = "force-dynamic";
 
@@ -49,9 +50,7 @@ export default async function PublishedPage() {
                   </Link>
                 </td>
                 <td className="px-4 py-3 text-zinc-700">
-                  {b.published_at
-                    ? new Date(b.published_at).toLocaleString()
-                    : "—"}
+                  {b.published_at ? <ClientTime at={b.published_at} /> : "—"}
                 </td>
                 <td className="px-4 py-3 text-zinc-500 text-xs">
                   {b.published_url ?? ""}

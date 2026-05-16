@@ -4,6 +4,7 @@ import { listBlogs, blogStatusCounts } from "@/lib/blogs";
 import { getSettings } from "@/lib/settings";
 import { Badge, Card } from "@/components/ui";
 import { Countdown } from "@/components/Countdown";
+import ClientTime from "@/components/ClientTime";
 import { RequestStatusBadge, BlogStatusBadge } from "@/components/StatusBadge";
 import RunNowButton from "./RunNowButton";
 
@@ -158,9 +159,7 @@ export default async function OverviewPage() {
                 <BlogStatusBadge status={b.status} />
               </div>
               <div className="text-xs text-zinc-500 mt-1">
-                {b.published_at
-                  ? new Date(b.published_at).toLocaleString()
-                  : ""}
+                {b.published_at && <ClientTime at={b.published_at} />}
               </div>
             </Link>
           ))}

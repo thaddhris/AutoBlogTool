@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Input } from "@/components/ui";
+import ClientTime from "@/components/ClientTime";
 import { Blog } from "@/lib/types";
 
 function formatRemaining(target: Date): string {
@@ -49,6 +50,28 @@ export default function BlogActions({ blog }: { blog: Blog }) {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Publish failed");
+      router.refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function unpublish() {
+    if (
+      !confirm(
+        "Unpublish this blog?\n\nThis reverts the local record back to draft so you can edit or regenerate it. The live post on your CMS is NOT removed automatically — delete or unpublish it manually on the CMS if you also want it gone there.",
+      )
+    )
+      return;
+    setBusy("unpublish");
+    try {
+      const res = await fetch(`/api/blogs/${blog.id}/unpublish`, {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Unpublish failed");
       router.refresh();
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
@@ -118,9 +141,10 @@ export default function BlogActions({ blog }: { blog: Blog }) {
           <span className="font-medium text-violet-900">
             {formatRemaining(new Date(blog.scheduled_at))}
           </span>
-          <div className="text-[11px] text-zinc-500">
-            {new Date(blog.scheduled_at).toLocaleString()}
-          </div>
+          <ClientTime
+            at={blog.scheduled_at}
+            className="text-[11px] text-zinc-500"
+          />
         </div>
       )}
 
@@ -155,6 +179,30 @@ export default function BlogActions({ blog }: { blog: Blog }) {
           </Button>
           <Button onClick={publishNow} disabled={busy !== null}>
             {busy === "publish" ? "Publishing…" : "Publish now"}
+          </Button>
+        </div>
+      )}
+
+      {isPublished && (
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {blog.published_url && (
+            <a
+              className="text-xs text-zinc-500 hover:text-zinc-700 underline truncate max-w-[260px]"
+              href={blog.published_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={blog.published_url}
+            >
+              live URL ↗
+            </a>
+          )}
+          <Button
+            variant="danger"
+            onClick={unpublish}
+            disabled={busy !== null}
+            title="Revert to draft locally so you can edit / regenerate"
+          >
+            {busy === "unpublish" ? "Unpublishing…" : "Unpublish"}
           </Button>
         </div>
       )}

@@ -9,6 +9,7 @@ import {
   PencilLine,
   CheckCircle2,
   Settings as SettingsIcon,
+  Activity,
 } from "lucide-react";
 
 const items = [
@@ -17,6 +18,7 @@ const items = [
   { href: "/admin/scheduled", label: "Scheduled", icon: Calendar },
   { href: "/admin/drafts", label: "Drafts", icon: PencilLine },
   { href: "/admin/published", label: "Published", icon: CheckCircle2 },
+  { href: "/admin/logs", label: "Logs", icon: Activity },
   { href: "/admin/settings", label: "Settings", icon: SettingsIcon },
 ];
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listRequests } from "@/lib/requests";
 import { RequestStatusBadge } from "@/components/StatusBadge";
+import ClientTime from "@/components/ClientTime";
 import RequestsToolbar from "./RequestsToolbar";
 
 export const dynamic = "force-dynamic";
@@ -71,7 +72,7 @@ export default async function RequestsPage() {
                   <RequestStatusBadge status={r.status} />
                 </td>
                 <td className="px-4 py-3 text-zinc-500 text-xs">
-                  {new Date(r.created_at).toLocaleDateString()}
+                  <ClientTime at={r.created_at} />
                 </td>
               </tr>
             ))}

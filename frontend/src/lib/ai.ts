@@ -41,6 +41,56 @@ export async function llmJson<T>(args: {
   }
 }
 
+/**
+ * Like `llmJson`, but validates the response with a caller-supplied validator
+ * and retries up to `maxRetries` times on failure. On retry, we append the
+ * previous response + the validation error to the prompt so the model can
+ * self-correct. After exhausting retries the last validation error is thrown.
+ */
+export async function llmJsonValidated<T>(args: {
+  system: string;
+  prompt: string;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  /** Throws on invalid, returns typed value on success. */
+  validate: (raw: unknown) => T;
+  /** Default 2 — matches the "max 2 retries" rule in the SEO spec. */
+  maxRetries?: number;
+}): Promise<T> {
+  const max = args.maxRetries ?? 2;
+  let lastErr: unknown;
+  let prompt = args.prompt;
+  for (let attempt = 0; attempt <= max; attempt++) {
+    let raw: unknown;
+    try {
+      raw = await llmJson<unknown>({
+        system: args.system,
+        prompt,
+        model: args.model,
+        temperature: args.temperature,
+        maxTokens: args.maxTokens,
+      });
+    } catch (err) {
+      lastErr = err;
+      // JSON parse failures: also worth a retry — feed the error back.
+      const msg = err instanceof Error ? err.message : String(err);
+      prompt = `${args.prompt}\n\n# Previous attempt failed\n${msg}\nProduce only valid JSON exactly matching the schema above. No prose.`;
+      continue;
+    }
+    try {
+      return args.validate(raw);
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      prompt = `${args.prompt}\n\n# Previous attempt failed validation\n${msg}\nPrevious output:\n${JSON.stringify(raw).slice(0, 1500)}\nFix every field flagged above and re-emit valid JSON only.`;
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error(String(lastErr ?? "llmJsonValidated exhausted retries"));
+}
+
 /** Call Groq for plain text — no JSON constraints. Used for long-form markdown. */
 export async function llmText(args: {
   system: string;

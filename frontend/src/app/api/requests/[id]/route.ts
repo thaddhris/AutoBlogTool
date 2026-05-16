@@ -53,6 +53,19 @@ export async function DELETE(
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
+  const existing = getRequest(id);
+  if (!existing) {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+  if (existing.status === "published") {
+    return Response.json(
+      {
+        error:
+          "Cannot delete a published request. Unpublish the blog first (it reverts the status to draft).",
+      },
+      { status: 409 },
+    );
+  }
   const ok = deleteRequest(id);
   if (!ok) return Response.json({ error: "Not found" }, { status: 404 });
   return Response.json({ ok: true });

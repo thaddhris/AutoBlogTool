@@ -2,6 +2,7 @@ import Link from "next/link";
 import { listBlogs } from "@/lib/blogs";
 import { BlogStatusBadge } from "@/components/StatusBadge";
 import { Countdown } from "@/components/Countdown";
+import ClientTime from "@/components/ClientTime";
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +70,7 @@ export default async function DraftsPage() {
                         className="font-medium text-violet-700"
                       />
                       <div className="text-zinc-500">
-                        {new Date(b.scheduled_at).toLocaleString()}
+                        <ClientTime at={b.scheduled_at} />
                       </div>
                     </>
                   ) : (

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { listBlogs } from "@/lib/blogs";
 import { BlogStatusBadge } from "@/components/StatusBadge";
 import { Countdown } from "@/components/Countdown";
+import ClientTime from "@/components/ClientTime";
 
 export const dynamic = "force-dynamic";
 
@@ -65,9 +66,7 @@ export default async function ScheduledPage() {
                   />
                 </td>
                 <td className="px-4 py-3 text-zinc-700">
-                  {b.scheduled_at
-                    ? new Date(b.scheduled_at).toLocaleString()
-                    : "—"}
+                  {b.scheduled_at ? <ClientTime at={b.scheduled_at} /> : "—"}
                 </td>
                 <td className="px-4 py-3">
                   <BlogStatusBadge status={b.status} />

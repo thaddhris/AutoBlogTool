@@ -1,5 +1,10 @@
 import { db } from "./db";
-import { Blog, BlogStatus } from "./types";
+import {
+  Blog,
+  BlogStatus,
+  FocusIntent,
+  QualityWarning,
+} from "./types";
 
 interface BlogRow {
   id: string;
@@ -16,6 +21,22 @@ interface BlogRow {
   schema_json: string;
   banner_url: string | null;
   banner_alt: string | null;
+  // Phase-A SEO columns (nullable on existing rows)
+  h1: string | null;
+  primary_keyword: string | null;
+  secondary_keywords_json: string | null;
+  focus_intent: string | null;
+  tldr: string | null;
+  readability_score: number | null;
+  keyword_density: number | null;
+  uniqueness_score: number | null;
+  quality_warnings_json: string | null;
+  claims_to_verify_json: string | null;
+  author: string | null;
+  reviewed_by: string | null;
+  sources_json: string | null;
+  internal_links_resolved: number | null;
+  word_count: number | null;
   status: string;
   scheduled_at: string | null;
   published_at: string | null;
@@ -24,7 +45,8 @@ interface BlogRow {
   updated_at: string;
 }
 
-function safeArr<T>(s: string, fallback: T[]): T[] {
+function safeArr<T>(s: string | null | undefined, fallback: T[]): T[] {
+  if (!s) return fallback;
   try {
     const v = JSON.parse(s);
     return Array.isArray(v) ? (v as T[]) : fallback;
@@ -49,6 +71,21 @@ function rowToBlog(r: BlogRow): Blog {
     schema_json: r.schema_json,
     banner_url: r.banner_url,
     banner_alt: r.banner_alt,
+    h1: r.h1,
+    primary_keyword: r.primary_keyword,
+    secondary_keywords: safeArr<string>(r.secondary_keywords_json, []),
+    focus_intent: (r.focus_intent as FocusIntent | null) ?? null,
+    tldr: r.tldr,
+    readability_score: r.readability_score,
+    keyword_density: r.keyword_density,
+    uniqueness_score: r.uniqueness_score,
+    quality_warnings: safeArr<QualityWarning>(r.quality_warnings_json, []),
+    claims_to_verify: safeArr<string>(r.claims_to_verify_json, []),
+    author: r.author,
+    reviewed_by: r.reviewed_by,
+    sources: safeArr<string>(r.sources_json, []),
+    internal_links_resolved: r.internal_links_resolved ?? 0,
+    word_count: r.word_count,
     status: r.status as BlogStatus,
     scheduled_at: r.scheduled_at,
     published_at: r.published_at,
@@ -90,43 +127,54 @@ export function listBlogs(opts?: {
   return rows.map(rowToBlog);
 }
 
-export function updateBlog(
-  id: string,
-  patch: Partial<{
-    title: string;
-    slug: string;
-    excerpt: string;
-    content_md: string;
-    meta_title: string;
-    meta_desc: string;
-    keywords: string[];
-    tags: string[];
-    faq: { q: string; a: string }[];
-    schema_json: string;
-    banner_url: string | null;
-    banner_alt: string | null;
-    status: BlogStatus;
-    scheduled_at: string | null;
-    published_at: string | null;
-    published_url: string | null;
-  }>,
-): Blog | null {
+export type BlogPatch = Partial<{
+  title: string;
+  slug: string;
+  excerpt: string;
+  content_md: string;
+  meta_title: string;
+  meta_desc: string;
+  keywords: string[];
+  tags: string[];
+  faq: { q: string; a: string }[];
+  schema_json: string;
+  banner_url: string | null;
+  banner_alt: string | null;
+  h1: string | null;
+  primary_keyword: string | null;
+  secondary_keywords: string[];
+  focus_intent: FocusIntent | null;
+  tldr: string | null;
+  readability_score: number | null;
+  keyword_density: number | null;
+  uniqueness_score: number | null;
+  quality_warnings: QualityWarning[];
+  claims_to_verify: string[];
+  author: string | null;
+  reviewed_by: string | null;
+  sources: string[];
+  internal_links_resolved: number;
+  word_count: number | null;
+  status: BlogStatus;
+  scheduled_at: string | null;
+  published_at: string | null;
+  published_url: string | null;
+}>;
+
+export function updateBlog(id: string, patch: BlogPatch): Blog | null {
   const fields: string[] = [];
   const values: (string | number | null)[] = [];
   const setField = (col: string, val: string | number | null) => {
     fields.push(`${col} = ?`);
     values.push(val);
   };
+  // Direct-mapped scalar fields
   if (patch.title !== undefined) setField("title", patch.title);
   if (patch.slug !== undefined) setField("slug", patch.slug);
   if (patch.excerpt !== undefined) setField("excerpt", patch.excerpt);
   if (patch.content_md !== undefined) setField("content_md", patch.content_md);
   if (patch.meta_title !== undefined) setField("meta_title", patch.meta_title);
   if (patch.meta_desc !== undefined) setField("meta_desc", patch.meta_desc);
-  if (patch.keywords !== undefined)
-    setField("keywords_json", JSON.stringify(patch.keywords));
-  if (patch.tags !== undefined) setField("tags_json", JSON.stringify(patch.tags));
-  if (patch.faq !== undefined) setField("faq_json", JSON.stringify(patch.faq));
   if (patch.schema_json !== undefined)
     setField("schema_json", patch.schema_json);
   if (patch.banner_url !== undefined) setField("banner_url", patch.banner_url);
@@ -138,9 +186,46 @@ export function updateBlog(
     setField("published_at", patch.published_at);
   if (patch.published_url !== undefined)
     setField("published_url", patch.published_url);
+  // JSON-encoded array fields
+  if (patch.keywords !== undefined)
+    setField("keywords_json", JSON.stringify(patch.keywords));
+  if (patch.tags !== undefined) setField("tags_json", JSON.stringify(patch.tags));
+  if (patch.faq !== undefined) setField("faq_json", JSON.stringify(patch.faq));
+  // Phase-A SEO additions
+  if (patch.h1 !== undefined) setField("h1", patch.h1);
+  if (patch.primary_keyword !== undefined)
+    setField("primary_keyword", patch.primary_keyword);
+  if (patch.secondary_keywords !== undefined)
+    setField(
+      "secondary_keywords_json",
+      JSON.stringify(patch.secondary_keywords),
+    );
+  if (patch.focus_intent !== undefined)
+    setField("focus_intent", patch.focus_intent);
+  if (patch.tldr !== undefined) setField("tldr", patch.tldr);
+  if (patch.readability_score !== undefined)
+    setField("readability_score", patch.readability_score);
+  if (patch.keyword_density !== undefined)
+    setField("keyword_density", patch.keyword_density);
+  if (patch.uniqueness_score !== undefined)
+    setField("uniqueness_score", patch.uniqueness_score);
+  if (patch.quality_warnings !== undefined)
+    setField("quality_warnings_json", JSON.stringify(patch.quality_warnings));
+  if (patch.claims_to_verify !== undefined)
+    setField("claims_to_verify_json", JSON.stringify(patch.claims_to_verify));
+  if (patch.author !== undefined) setField("author", patch.author);
+  if (patch.reviewed_by !== undefined)
+    setField("reviewed_by", patch.reviewed_by);
+  if (patch.sources !== undefined)
+    setField("sources_json", JSON.stringify(patch.sources));
+  if (patch.internal_links_resolved !== undefined)
+    setField("internal_links_resolved", patch.internal_links_resolved);
+  if (patch.word_count !== undefined) setField("word_count", patch.word_count);
+
   if (!fields.length) return getBlog(id);
   fields.push(`updated_at = datetime('now')`);
-  db().prepare(`UPDATE blogs SET ${fields.join(", ")} WHERE id = ?`)
+  db()
+    .prepare(`UPDATE blogs SET ${fields.join(", ")} WHERE id = ?`)
     .run(...values, id);
   return getBlog(id);
 }

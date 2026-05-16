@@ -18,6 +18,23 @@ export function db(): Database.Database {
   return _db;
 }
 
+/**
+ * Idempotently add a column to a table. SQLite's ALTER TABLE ADD COLUMN
+ * errors if the column already exists, so we probe first.
+ */
+function addColumn(
+  d: Database.Database,
+  table: string,
+  column: string,
+  ddl: string,
+) {
+  const existing = d
+    .prepare(`PRAGMA table_info(${table})`)
+    .all() as { name: string }[];
+  if (existing.some((c) => c.name === column)) return;
+  d.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+}
+
 function migrate(d: Database.Database) {
   d.exec(`
     CREATE TABLE IF NOT EXISTS settings (
@@ -120,6 +137,29 @@ function migrate(d: Database.Database) {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+
+  // Phase-A SEO columns. All nullable so existing rows keep working.
+  // Naming uses the SEO-spec terms; legacy columns kept as-is for back-compat:
+  //   meta_title   ↔ title_tag (legacy column, still the canonical title tag)
+  //   meta_desc    ↔ meta_description (legacy column)
+  //   banner_url   ↔ hero_image_url (legacy column)
+  //   banner_alt   ↔ hero_image_alt (legacy column)
+  //   excerpt      ↔ short hook (kept; tldr is new and distinct)
+  addColumn(d, "blogs", "h1", "TEXT");
+  addColumn(d, "blogs", "primary_keyword", "TEXT");
+  addColumn(d, "blogs", "secondary_keywords_json", "TEXT NOT NULL DEFAULT '[]'");
+  addColumn(d, "blogs", "focus_intent", "TEXT"); // informational|commercial|transactional
+  addColumn(d, "blogs", "tldr", "TEXT");
+  addColumn(d, "blogs", "readability_score", "REAL");
+  addColumn(d, "blogs", "keyword_density", "REAL");
+  addColumn(d, "blogs", "uniqueness_score", "REAL");
+  addColumn(d, "blogs", "quality_warnings_json", "TEXT NOT NULL DEFAULT '[]'");
+  addColumn(d, "blogs", "claims_to_verify_json", "TEXT NOT NULL DEFAULT '[]'");
+  addColumn(d, "blogs", "author", "TEXT");
+  addColumn(d, "blogs", "reviewed_by", "TEXT");
+  addColumn(d, "blogs", "sources_json", "TEXT NOT NULL DEFAULT '[]'");
+  addColumn(d, "blogs", "internal_links_resolved", "INTEGER NOT NULL DEFAULT 0");
+  addColumn(d, "blogs", "word_count", "INTEGER");
 }
 
 export function logEvent(

@@ -10,7 +10,8 @@ export default async function SettingsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-zinc-500 mt-1">
-          API keys, queue tuning, brand voice, and publisher target.
+          API keys, queue tuning, brand voice, image generation, and publisher
+          target.
         </p>
       </div>
       <SettingsForm
@@ -23,9 +24,13 @@ export default async function SettingsPage() {
           webflow_token: s.webflow_token
             ? "•••••••••" + s.webflow_token.slice(-4)
             : "",
+          gemini_api_key: s.gemini_api_key
+            ? "•••••••••" + s.gemini_api_key.slice(-4)
+            : "",
         }}
         hasGroqKey={Boolean(s.groq_api_key)}
         hasWebflowToken={Boolean(s.webflow_token)}
+        hasGeminiKey={Boolean(s.gemini_api_key)}
       />
     </div>
   );
