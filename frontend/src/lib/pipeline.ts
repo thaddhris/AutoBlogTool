@@ -10,7 +10,7 @@ import { getRequest, updateRequest } from "./requests";
 import { getBlog, getBlogByRequest, updateBlog } from "./blogs";
 import { resolveInternalLinks } from "./internalLinks";
 import { runQualityChecks } from "./quality";
-import { Blog, FocusIntent } from "./types";
+import { Blog } from "./types";
 
 // ─── Outline JSON contract ───────────────────────────────────────────────────
 //
@@ -41,11 +41,6 @@ const OutlineSchema = z.object({
     .optional(),
   primary_keyword: z.string().min(2).max(80),
   secondary_keywords: z.array(z.string().min(2).max(80)).min(3).max(6),
-  focus_intent: z.enum([
-    "informational",
-    "commercial",
-    "transactional",
-  ]),
   tldr: z.string().min(80).max(500),
   excerpt: z.string().min(40).max(280),
   tags: z.array(z.string().min(2).max(40)).min(2).max(5),
@@ -151,7 +146,6 @@ Produce blog post metadata and a section outline as JSON. Hard requirements:
 - "slug_seed" (optional): kebab-case, 3–5 words, keyword-led, e.g. "oee-basics-plant-managers".
 - "primary_keyword": single string, the head keyword.
 - "secondary_keywords": **3–6** related/LSI keywords, no overlap with primary.
-- "focus_intent": one of "informational" | "commercial" | "transactional".
 - "tldr": 2–3 sentence answer to the search intent, **80–500 chars**.
 - "excerpt": 1–2 sentence hook for listing pages, **40–280 chars**.
 - "tags": **2–5** short tags.
@@ -167,7 +161,6 @@ Respond with JSON of shape:
   "slug_seed": string,
   "primary_keyword": string,
   "secondary_keywords": string[],
-  "focus_intent": "informational" | "commercial" | "transactional",
   "tldr": string,
   "excerpt": string,
   "tags": string[],
@@ -275,12 +268,11 @@ Now write the full blog post body in Markdown.
          meta_title, meta_desc,
          keywords_json, tags_json, faq_json, schema_json,
          banner_url, banner_alt, status,
-         h1, primary_keyword, secondary_keywords_json,
-         focus_intent, tldr, author, sources_json,
-         internal_links_resolved
+         primary_keyword, secondary_keywords_json,
+         sources_json, internal_links_resolved
        )
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft',
-               ?, ?, ?, ?, ?, ?, ?, ?)`,
+               ?, ?, ?, ?)`,
     )
     .run(
       id,
@@ -297,12 +289,8 @@ Now write the full blog post body in Markdown.
       "{}", // schema_json filled in below once we have the persisted blog
       banner.url,
       banner.alt,
-      outline.h1,
       outline.primary_keyword,
       JSON.stringify(outline.secondary_keywords),
-      outline.focus_intent as FocusIntent,
-      outline.tldr,
-      settings.default_author || null,
       JSON.stringify(outline.sources ?? []),
       resolved,
     );

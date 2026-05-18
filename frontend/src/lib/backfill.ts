@@ -10,11 +10,8 @@ import { Blog } from "./types";
 const BackfillSchema = z.object({
   title_tag: z.string().min(20).max(60),
   meta_description: z.string().min(120).max(165),
-  h1: z.string().min(10).max(120),
   primary_keyword: z.string().min(2).max(80),
   secondary_keywords: z.array(z.string().min(2).max(80)).min(3).max(6),
-  focus_intent: z.enum(["informational", "commercial", "transactional"]),
-  tldr: z.string().min(80).max(500),
 });
 
 type BackfillFields = z.infer<typeof BackfillSchema>;
@@ -31,10 +28,7 @@ function needsBackfill(blog: Blog): boolean {
   return (
     isBlank(blog.meta_title) ||
     isBlank(blog.meta_desc) ||
-    !blog.h1 ||
     !blog.primary_keyword ||
-    !blog.tldr ||
-    !blog.focus_intent ||
     blog.secondary_keywords.length === 0
   );
 }
@@ -66,11 +60,8 @@ ${bodyExcerpt}
 Produce a JSON object with these fields, respecting character limits:
 - "title_tag" (20–60 chars, primary keyword near the start)
 - "meta_description" (120–165 chars, action-oriented, mentions primary keyword)
-- "h1" (10–120 chars, on-page headline; may differ from title_tag)
 - "primary_keyword" (single head keyword phrase)
 - "secondary_keywords" (3–6 related/LSI keywords)
-- "focus_intent" (one of "informational" | "commercial" | "transactional")
-- "tldr" (2–3 sentence answer to the search intent, 80–500 chars)
 
 Base everything on what the post actually says — do not invent topics it doesn't cover.
 No prose outside JSON.`;
@@ -126,14 +117,11 @@ export async function backfillAllBlogs(opts?: {
           updateBlog(b.id, {
             meta_title: isBlank(b.meta_title) ? f.title_tag : b.meta_title,
             meta_desc: isBlank(b.meta_desc) ? f.meta_description : b.meta_desc,
-            h1: b.h1 ?? f.h1,
             primary_keyword: b.primary_keyword ?? f.primary_keyword,
             secondary_keywords:
               b.secondary_keywords.length > 0
                 ? b.secondary_keywords
                 : f.secondary_keywords,
-            focus_intent: b.focus_intent ?? f.focus_intent,
-            tldr: b.tldr ?? f.tldr,
           });
           out.llm_backfilled++;
           logEvent("backfill.llm.ok", b.title, { blogId: b.id });

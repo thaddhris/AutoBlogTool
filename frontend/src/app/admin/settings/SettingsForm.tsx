@@ -295,8 +295,26 @@ export default function SettingsForm({
                 onChange={(e) =>
                   update("webflow_collection_id", e.target.value)
                 }
-                placeholder="e.g. 6a08052216d26e9419b7119c"
+                placeholder="e.g. 68a6d2bc7a6ac4518f825282"
               />
+              <p className="text-[11px] text-zinc-500 mt-1">
+                The Blog Posts collection. Posts go to{" "}
+                <code>/v2/collections/&lt;id&gt;/items/live</code>.
+              </p>
+            </div>
+            <div>
+              <Label>Site ID (optional)</Label>
+              <Input
+                value={form.webflow_site_id}
+                onChange={(e) =>
+                  update("webflow_site_id", e.target.value)
+                }
+                placeholder="e.g. 67e1090be256b086e66401df"
+              />
+              <p className="text-[11px] text-zinc-500 mt-1">
+                Not used by the current publisher — reserved for image asset
+                uploads and site-level operations.
+              </p>
             </div>
             <div>
               <Label>Image field slug (optional)</Label>
@@ -345,13 +363,112 @@ export default function SettingsForm({
 
       <Card>
         <div className="text-xs uppercase tracking-wide text-zinc-500 mb-3">
-          SEO & Organization
+          Webflow field mapping
         </div>
         <p className="text-[11px] text-zinc-500 mb-3">
-          One-time config. Fills the JSON-LD <code>publisher</code> block on
-          every blog, plus drives canonical URLs and absolute internal links.
+          Pre-filled with the slugs from the Faclon Labs &ldquo;Blog
+          Posts&rdquo; collection. Each slug is the CMS field key on your
+          collection — adjust if you renamed any. Leave any blank to skip.
         </p>
-        <div className="space-y-3">
+
+        <div className="text-[11px] uppercase tracking-wide text-zinc-400 mb-2">
+          Content
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+          <FieldSlug
+            label="Main image"
+            value={form.webflow_image_field}
+            onChange={(v) => update("webflow_image_field", v)}
+            placeholder="main-image"
+          />
+          <FieldSlug
+            label="Thumbnail image"
+            value={form.webflow_thumbnail_field}
+            onChange={(v) => update("webflow_thumbnail_field", v)}
+            placeholder="thumbnail-image"
+            hint="Sent the same image as Main Image."
+          />
+          <FieldSlug
+            label="Post summary"
+            value={form.webflow_post_summary_field}
+            onChange={(v) => update("webflow_post_summary_field", v)}
+            placeholder="post-summary"
+          />
+          <FieldSlug
+            label="Reading time"
+            value={form.webflow_reading_time_field}
+            onChange={(v) => update("webflow_reading_time_field", v)}
+            placeholder="reading-time"
+            hint="Auto-computed from word_count, e.g. &ldquo;6 Mins&rdquo;."
+          />
+        </div>
+
+        <div className="text-[11px] uppercase tracking-wide text-zinc-400 mb-2">
+          SEO meta
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+          <FieldSlug
+            label="Meta tag (SEO title)"
+            value={form.webflow_meta_tag_field}
+            onChange={(v) => update("webflow_meta_tag_field", v)}
+            placeholder="meta-tag"
+          />
+          <FieldSlug
+            label="Meta description"
+            value={form.webflow_meta_description_field}
+            onChange={(v) => update("webflow_meta_description_field", v)}
+            placeholder="meta-description"
+          />
+        </div>
+
+        <div className="text-[11px] uppercase tracking-wide text-zinc-400 mb-2">
+          Reference fields (Webflow expects item IDs, not names)
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <FieldSlug
+            label="Author field slug"
+            value={form.webflow_author_field}
+            onChange={(v) => update("webflow_author_field", v)}
+            placeholder="author"
+          />
+          <FieldSlug
+            label="Author item ID"
+            value={form.webflow_author_item_id}
+            onChange={(v) => update("webflow_author_item_id", v)}
+            placeholder="6a08…"
+            hint="Find this in the Webflow Authors collection (each author's item ID)."
+          />
+          <FieldSlug
+            label="Categories field slug"
+            value={form.webflow_categories_field}
+            onChange={(v) => update("webflow_categories_field", v)}
+            placeholder="categories"
+          />
+          <FieldSlug
+            label="Default category item ID"
+            value={form.webflow_default_category_id}
+            onChange={(v) => update("webflow_default_category_id", v)}
+            placeholder="e.g. Industrial AI item id"
+            hint="Used for every new post until per-post categories are supported."
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+          <div>
+            <Label>Reading speed (words/minute)</Label>
+            <Input
+              type="number"
+              min={120}
+              max={400}
+              value={form.webflow_reading_wpm}
+              onChange={(e) =>
+                update("webflow_reading_wpm", Number(e.target.value))
+              }
+            />
+            <p className="text-[11px] text-zinc-500 mt-1">
+              220 wpm is the typical default for technical reading.
+            </p>
+          </div>
           <div>
             <Label>Public site URL</Label>
             <Input
@@ -360,122 +477,10 @@ export default function SettingsForm({
               placeholder="https://faclonlabs.com"
             />
             <p className="text-[11px] text-zinc-500 mt-1">
-              Where <code>/blog/&lt;slug&gt;</code> lives. Used in canonical
-              tags, breadcrumb URLs, and internal-link resolution.
+              Where <code>/blog/&lt;slug&gt;</code> lives. Used to build
+              absolute URLs in resolved internal links.
             </p>
           </div>
-          <div>
-            <Label>Default author</Label>
-            <Input
-              value={form.default_author}
-              onChange={(e) => update("default_author", e.target.value)}
-              placeholder="Faclon Labs Editorial Team"
-            />
-          </div>
-          <div>
-            <Label>Organization logo URL</Label>
-            <Input
-              value={form.organization_logo_url}
-              onChange={(e) =>
-                update("organization_logo_url", e.target.value)
-              }
-              placeholder="https://faclonlabs.com/logo.png"
-            />
-            <p className="text-[11px] text-zinc-500 mt-1">
-              Shown in BlogPosting <code>publisher.logo</code> structured data.
-            </p>
-          </div>
-          <div>
-            <Label>Organization social URLs (one per line)</Label>
-            <Textarea
-              rows={3}
-              value={(form.organization_same_as ?? []).join("\n")}
-              onChange={(e) =>
-                update(
-                  "organization_same_as",
-                  e.target.value
-                    .split(/\n/)
-                    .map((s) => s.trim())
-                    .filter(Boolean),
-                )
-              }
-              placeholder={
-                "https://www.linkedin.com/company/faclon-labs\nhttps://x.com/faclonlabs"
-              }
-              className="font-mono text-xs"
-            />
-            <p className="text-[11px] text-zinc-500 mt-1">
-              Becomes the <code>sameAs</code> array in Organization schema.
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      <Card>
-        <div className="text-xs uppercase tracking-wide text-zinc-500 mb-3">
-          Webflow field mapping
-        </div>
-        <p className="text-[11px] text-zinc-500 mb-3">
-          One-time per collection. Tells the publisher which CMS field slugs
-          to write each value to. Leave any blank to skip that field —
-          publishing still succeeds; the value is just dropped on the floor.
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <FieldSlug
-            label="Title tag"
-            value={form.webflow_title_tag_field}
-            onChange={(v) => update("webflow_title_tag_field", v)}
-            placeholder="seo-title"
-          />
-          <FieldSlug
-            label="Meta description"
-            value={form.webflow_meta_description_field}
-            onChange={(v) => update("webflow_meta_description_field", v)}
-            placeholder="seo-description"
-          />
-          <FieldSlug
-            label="H1"
-            value={form.webflow_h1_field}
-            onChange={(v) => update("webflow_h1_field", v)}
-            placeholder="h1"
-          />
-          <FieldSlug
-            label="TL;DR"
-            value={form.webflow_tldr_field}
-            onChange={(v) => update("webflow_tldr_field", v)}
-            placeholder="tldr"
-          />
-          <FieldSlug
-            label="Author"
-            value={form.webflow_author_field}
-            onChange={(v) => update("webflow_author_field", v)}
-            placeholder="author"
-          />
-          <FieldSlug
-            label="Primary keyword"
-            value={form.webflow_primary_keyword_field}
-            onChange={(v) => update("webflow_primary_keyword_field", v)}
-            placeholder="primary-keyword"
-          />
-          <FieldSlug
-            label="Canonical URL"
-            value={form.webflow_canonical_field}
-            onChange={(v) => update("webflow_canonical_field", v)}
-            placeholder="canonical-url"
-          />
-          <FieldSlug
-            label="OG image"
-            value={form.webflow_og_image_field}
-            onChange={(v) => update("webflow_og_image_field", v)}
-            placeholder="og-image"
-          />
-          <FieldSlug
-            label="JSON-LD (head script)"
-            value={form.webflow_json_ld_field}
-            onChange={(v) => update("webflow_json_ld_field", v)}
-            placeholder="json-ld"
-            hint="If your template injects this field into <head>. Otherwise JSON-LD already ships inside post-body."
-          />
         </div>
       </Card>
 

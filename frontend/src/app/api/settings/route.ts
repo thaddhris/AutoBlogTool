@@ -51,10 +51,22 @@ export async function PUT(request: NextRequest) {
     "gemini_api_key",
     "gemini_image_model",
     "public_base_url",
+    "site_url",
     "webflow_token",
+    "webflow_site_id",
     "webflow_collection_id",
     "webflow_featured_default",
     "webflow_image_field",
+    "webflow_thumbnail_field",
+    "webflow_post_summary_field",
+    "webflow_reading_time_field",
+    "webflow_meta_tag_field",
+    "webflow_meta_description_field",
+    "webflow_author_field",
+    "webflow_author_item_id",
+    "webflow_categories_field",
+    "webflow_default_category_id",
+    "webflow_reading_wpm",
   ];
   const patch: Partial<Settings> = {};
   for (const k of allowed) {
@@ -77,16 +89,35 @@ export async function PUT(request: NextRequest) {
       continue;
     }
 
-    // Strip whitespace/trailing slash from base URL.
-    if (k === "public_base_url" && typeof body[k] === "string") {
+    // Strip whitespace/trailing slash from base URLs.
+    if (
+      (k === "public_base_url" || k === "site_url") &&
+      typeof body[k] === "string"
+    ) {
       (patch as Record<string, unknown>)[k] = String(body[k])
         .trim()
         .replace(/\/$/, "");
       continue;
     }
 
-    // Trim field slug — Webflow rejects whitespace in field keys.
-    if (k === "webflow_image_field" && typeof body[k] === "string") {
+    // Trim field slugs and reference IDs — Webflow rejects whitespace.
+    const slugLike = (
+      [
+        "webflow_image_field",
+        "webflow_thumbnail_field",
+        "webflow_post_summary_field",
+        "webflow_reading_time_field",
+        "webflow_meta_tag_field",
+        "webflow_meta_description_field",
+        "webflow_author_field",
+        "webflow_author_item_id",
+        "webflow_categories_field",
+        "webflow_default_category_id",
+        "webflow_collection_id",
+        "webflow_site_id",
+      ] as const
+    ).includes(k as never);
+    if (slugLike && typeof body[k] === "string") {
       (patch as Record<string, unknown>)[k] = String(body[k]).trim();
       continue;
     }

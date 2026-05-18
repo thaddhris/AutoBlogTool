@@ -37,8 +37,6 @@ function organizationLd() {
     "@type": "Organization",
     name: s.brand_name,
     url: s.site_url || undefined,
-    logo: s.organization_logo_url || undefined,
-    sameAs: s.organization_same_as?.length ? s.organization_same_as : undefined,
   };
 }
 
@@ -47,23 +45,16 @@ function publisherLd() {
   return {
     "@type": "Organization",
     name: s.brand_name,
-    logo: s.organization_logo_url
-      ? {
-          "@type": "ImageObject",
-          url: s.organization_logo_url,
-        }
-      : undefined,
   };
 }
 
 function authorLd(authorName: string | null) {
   const s = getSettings();
-  const name = authorName?.trim() || s.default_author || s.brand_name;
+  const name = authorName?.trim() || s.brand_name;
   return { "@type": "Person", name };
 }
 
 export function blogPostingLd(blog: Blog) {
-  const s = getSettings();
   const url = siteBlogUrl(blog.slug);
   const image =
     absolutizeBannerUrl(blog.banner_url) ||
@@ -79,15 +70,11 @@ export function blogPostingLd(blog: Blog) {
     author: authorLd(blog.author),
     publisher: publisherLd(),
     mainEntityOfPage: { "@type": "WebPage", "@id": url },
-    keywords: [
-      blog.primary_keyword,
-      ...blog.secondary_keywords,
-      ...blog.keywords,
-    ]
-      .filter(Boolean)
-      .join(", ") || undefined,
+    keywords:
+      [blog.primary_keyword, ...blog.secondary_keywords, ...blog.keywords]
+        .filter(Boolean)
+        .join(", ") || undefined,
     inLanguage: "en-US",
-    publisherName: s.brand_name,
   };
 }
 

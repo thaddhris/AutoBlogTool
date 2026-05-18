@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { getBlog, updateBlog, BlogPatch } from "@/lib/blogs";
-import { FocusIntent } from "@/lib/types";
 
 export async function GET(
   _req: NextRequest,
@@ -23,11 +22,7 @@ const SCALAR_KEYS = [
   "banner_alt",
   "status",
   "scheduled_at",
-  "h1",
   "primary_keyword",
-  "tldr",
-  "author",
-  "reviewed_by",
 ] as const;
 
 const ARRAY_KEYS = [
@@ -35,14 +30,7 @@ const ARRAY_KEYS = [
   "tags",
   "secondary_keywords",
   "sources",
-  "claims_to_verify",
 ] as const;
-
-const FOCUS_INTENTS: FocusIntent[] = [
-  "informational",
-  "commercial",
-  "transactional",
-];
 
 export async function PATCH(
   request: NextRequest,
@@ -71,14 +59,8 @@ export async function PATCH(
     }
   }
 
-  if (body.faq !== undefined) patch.faq = body.faq as { q: string; a: string }[];
-
-  if (body.focus_intent !== undefined) {
-    const v = body.focus_intent;
-    if (v === null) patch.focus_intent = null;
-    else if (typeof v === "string" && (FOCUS_INTENTS as string[]).includes(v))
-      patch.focus_intent = v as FocusIntent;
-  }
+  if (body.faq !== undefined)
+    patch.faq = body.faq as { q: string; a: string }[];
 
   const updated = updateBlog(id, patch);
   if (!updated) return Response.json({ error: "Not found" }, { status: 404 });

@@ -1,7 +1,6 @@
 import { marked } from "marked";
 import { getSettings } from "../settings";
 import { absolutizeBannerUrl } from "../images";
-import { jsonLdScriptBlock, jsonLdObjects } from "../seo";
 import { Blog } from "../types";
 
 export interface PublishResult {
@@ -14,44 +13,60 @@ interface WebflowItemResponse {
   [k: string]: unknown;
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 /**
- * Build the HTML body that Webflow's rich-text field will store. Includes:
- *   - the rendered markdown body
- *   - the JSON-LD <script> tags (BlogPosting + FAQPage + Breadcrumb), which
- *     Webflow's rich-text field preserves and the rendered page emits in <body>
- *     for crawlers to read
- *   - a Sources section if blog.sources is non-empty
+ * Render the markdown body to HTML and append FAQ + Sources sections.
+ * Webflow's rich-text field doesn't have a separate FAQ slot on this
+ * collection, so we inline it as an `<h2>FAQ</h2>` block followed by
+ * question/answer pairs. JSON-LD is not injected — Webflow's rich-text
+ * strips <script> tags. If JSON-LD is needed later, embed it via a
+ * site-wide template Embed bound to a dedicated CMS field.
  */
 function buildBodyHtml(blog: Blog): string {
   const html = marked.parse(blog.content_md || "", { async: false }) as string;
   const parts = [html];
 
+  if (blog.faq.length > 0) {
+    const faqHtml = blog.faq
+      .map(
+        (f) =>
+          `<h3>${escapeHtml(f.q)}</h3>\n<p>${escapeHtml(f.a)}</p>`,
+      )
+      .join("\n\n");
+    parts.push(`<h2>Frequently asked questions</h2>\n${faqHtml}`);
+  }
+
   if (blog.sources.length > 0) {
     const items = blog.sources
       .map(
         (s) =>
-          `<li><a href="${s}" target="_blank" rel="noopener noreferrer">${s}</a></li>`,
+          `<li><a href="${escapeHtml(s)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s)}</a></li>`,
       )
       .join("");
     parts.push(`<h2>Sources</h2>\n<ul>${items}</ul>`);
   }
 
-  parts.push(jsonLdScriptBlock(blog));
-
   return parts.join("\n\n");
 }
 
+function readingTime(blog: Blog, wpm: number): string | null {
+  if (!blog.word_count || blog.word_count < 1) return null;
+  const mins = Math.max(1, Math.round(blog.word_count / Math.max(60, wpm)));
+  return `${mins} Min${mins === 1 ? "" : "s"}`;
+}
+
 /**
- * Send a blog to Webflow's "items/live" endpoint (creates + publishes in one
- * call).
- *
- * Field mapping uses two layers:
- *  - Hardcoded core slugs that have existed since the first Webflow setup:
- *    `name`, `slug`, `post-body`, `post-summary`, `featured`.
- *  - Configurable extras driven by settings. Each is only sent if the
- *    corresponding `webflow_*_field` setting is non-empty AND we have data
- *    to send. This keeps the publisher robust if the collection schema
- *    doesn't have every field.
+ * Send a blog to Webflow's /items/live endpoint. Field mapping is driven by
+ * the *_field settings — each one is a Webflow CMS field SLUG on the
+ * configured collection. Empty slugs are silently skipped so the publisher
+ * never sends keys the collection doesn't have.
  */
 export async function publish(blog: Blog): Promise<PublishResult> {
   const settings = getSettings();
@@ -60,77 +75,67 @@ export async function publish(blog: Blog): Promise<PublishResult> {
   if (!token) throw new Error("Webflow token is not configured");
   if (!collectionId) throw new Error("Webflow collection ID is not configured");
 
+  // ── Core fields (slugs that have existed since the first Webflow setup) ──
   const fieldData: Record<string, unknown> = {
     name: blog.title,
     slug: blog.slug,
     "post-body": buildBodyHtml(blog),
-    "post-summary": blog.excerpt,
     featured: settings.webflow_featured_default ?? false,
   };
 
-  // Hero image (existing behavior)
-  const imageField = settings.webflow_image_field?.trim();
-  if (imageField && blog.banner_url) {
-    const absolute = absolutizeBannerUrl(blog.banner_url);
-    if (absolute && !absolute.startsWith("data:")) {
-      fieldData[imageField] = {
-        url: absolute,
-        alt: blog.banner_alt ?? blog.title,
-      };
-    }
-  }
-
-  // Helper that only writes the field if the configured slug AND value exist.
-  const sendIf = (slug: string | undefined | null, value: unknown) => {
+  // Helper: only write the field if both the configured slug AND a value exist.
+  const sendIf = (
+    slug: string | undefined | null,
+    value: unknown,
+  ): void => {
     const s = (slug || "").trim();
     if (!s) return;
     if (value === null || value === undefined || value === "") return;
     fieldData[s] = value;
   };
 
-  // SEO meta — these usually map to Webflow's built-in SEO fields. The
-  // Webflow editor surfaces those as "SEO title" / "SEO description"; if the
-  // collection has dedicated CMS fields for them, configure their slugs in
-  // settings.
-  sendIf(settings.webflow_title_tag_field, blog.meta_title);
-  sendIf(settings.webflow_meta_description_field, blog.meta_desc);
-  sendIf(settings.webflow_h1_field, blog.h1 ?? blog.title);
-  sendIf(settings.webflow_tldr_field, blog.tldr);
-  sendIf(settings.webflow_author_field, blog.author);
-  sendIf(settings.webflow_primary_keyword_field, blog.primary_keyword);
-
-  // Canonical (absolute URL based on site_url + slug)
-  const canonical = settings.site_url
-    ? `${settings.site_url.replace(/\/$/, "")}/blog/${blog.slug}`
-    : null;
-  sendIf(settings.webflow_canonical_field, canonical);
-
-  // OG image — uses the hero, absolutized
-  if (settings.webflow_og_image_field && blog.banner_url) {
+  // ── Hero image (main-image by default) ──
+  if (blog.banner_url) {
     const absolute = absolutizeBannerUrl(blog.banner_url);
     if (absolute && !absolute.startsWith("data:")) {
-      fieldData[settings.webflow_og_image_field.trim()] = {
+      const imageValue = {
         url: absolute,
         alt: blog.banner_alt ?? blog.title,
       };
+      sendIf(settings.webflow_image_field, imageValue);
+      // Thumbnail mirrors the main image. If a separate thumbnail provider is
+      // wired in later, branch here.
+      sendIf(settings.webflow_thumbnail_field, imageValue);
     }
   }
 
-  // JSON-LD as a dedicated text field (some Webflow templates render this in
-  // <head> via an Embed element bound to a CMS field). The script tags are
-  // included so the field value can be pasted straight into <head>.
-  if (settings.webflow_json_ld_field) {
-    const objs = jsonLdObjects(blog);
-    const blocks = [objs.blogPosting, objs.faqPage, objs.breadcrumb].filter(
-      Boolean,
-    );
-    const scripts = blocks
-      .map(
-        (b) =>
-          `<script type="application/ld+json">${JSON.stringify(b)}</script>`,
-      )
-      .join("\n");
-    sendIf(settings.webflow_json_ld_field, scripts);
+  // ── Excerpt / summary card text ──
+  sendIf(settings.webflow_post_summary_field, blog.excerpt);
+
+  // ── SEO meta (Meta Tag + Meta Description on the Faclon collection) ──
+  sendIf(settings.webflow_meta_tag_field, blog.meta_title);
+  sendIf(settings.webflow_meta_description_field, blog.meta_desc);
+
+  // ── Reading time (computed from word_count) ──
+  sendIf(
+    settings.webflow_reading_time_field,
+    readingTime(blog, settings.webflow_reading_wpm || 220),
+  );
+
+  // ── Reference fields: Webflow expects the referenced collection's item id.
+  //    A blog-level override would go here in the future; for now we use the
+  //    single default configured in settings. Skipped silently if the id is
+  //    blank, so it's safe to leave unset during early setup.
+  sendIf(settings.webflow_author_field, settings.webflow_author_item_id);
+  if (
+    settings.webflow_categories_field &&
+    settings.webflow_default_category_id
+  ) {
+    // Multi-reference fields in Webflow v2 take an array of ids. The Faclon
+    // collection's "Categories" pill supports multi-select.
+    fieldData[settings.webflow_categories_field.trim()] = [
+      settings.webflow_default_category_id.trim(),
+    ];
   }
 
   const body = { fieldData };

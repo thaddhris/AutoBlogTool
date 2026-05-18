@@ -134,28 +134,33 @@ export interface Settings {
   // locally-saved banners into URLs that Webflow can fetch.
   public_base_url: string;
   // Public site root where /blog/<slug> lives (e.g. https://faclonlabs.com).
-  // Used for canonical URLs, OG urls, mainEntityOfPage. Different from
-  // public_base_url, which points at this autoblog admin host.
+  // Used by the internal-link resolver to produce absolute URLs and by the
+  // JSON-LD builder if/when JSON-LD is shipped.
   site_url: string;
-  // E-E-A-T / Organization for JSON-LD publisher block
-  default_author: string;
-  organization_logo_url: string;
-  organization_same_as: string[];
   // Webflow-specific (only used when publisher === "webflow")
+  //
+  // The *_field strings are the SLUGS Webflow uses for each CMS field on
+  // the configured collection. Defaults match the Faclon "Blog Posts"
+  // collection shown in the v1 setup. Leave any blank to skip that field —
+  // the publisher will silently drop the value.
   webflow_token: string;
+  webflow_site_id: string;
   webflow_collection_id: string;
   webflow_featured_default: boolean;
-  webflow_image_field: string;
-  // Additional Webflow CMS field slugs for expanded SEO payload (empty = skip)
-  webflow_title_tag_field: string;
-  webflow_meta_description_field: string;
-  webflow_h1_field: string;
-  webflow_tldr_field: string;
-  webflow_author_field: string;
-  webflow_primary_keyword_field: string;
-  webflow_canonical_field: string;
-  webflow_og_image_field: string;
-  webflow_json_ld_field: string;
+  webflow_image_field: string; // main hero image slug, default "main-image"
+  webflow_thumbnail_field: string; // grid thumbnail slug, default "thumbnail-image"
+  webflow_post_summary_field: string; // grid excerpt slug, default "post-summary"
+  webflow_reading_time_field: string; // text slug, default "reading-time"
+  webflow_meta_tag_field: string; // SEO title slug, default "meta-tag"
+  webflow_meta_description_field: string; // SEO description slug, default "meta-description"
+  // Reference fields — Webflow expects the referenced collection's ITEM ID
+  // (not a string). If a default is configured we attach it to every post.
+  webflow_author_field: string; // slug, default "author"
+  webflow_author_item_id: string; // the author item to reference
+  webflow_categories_field: string; // slug, default "categories"
+  webflow_default_category_id: string; // category item id to use by default
+  // Words per minute used to compute reading_time from word_count.
+  webflow_reading_wpm: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -171,24 +176,23 @@ export const DEFAULT_SETTINGS: Settings = {
   publisher: "markdown",
   words_target: 1200,
   site_url: "",
-  default_author: "Faclon Labs Editorial Team",
-  organization_logo_url: "",
-  organization_same_as: [],
-  webflow_title_tag_field: "",
-  webflow_meta_description_field: "",
-  webflow_h1_field: "",
-  webflow_tldr_field: "",
-  webflow_author_field: "",
-  webflow_primary_keyword_field: "",
-  webflow_canonical_field: "",
-  webflow_og_image_field: "",
-  webflow_json_ld_field: "",
+  webflow_image_field: "main-image",
+  webflow_thumbnail_field: "thumbnail-image",
+  webflow_post_summary_field: "post-summary",
+  webflow_reading_time_field: "reading-time",
+  webflow_meta_tag_field: "meta-tag",
+  webflow_meta_description_field: "meta-description",
+  webflow_author_field: "author",
+  webflow_author_item_id: "",
+  webflow_categories_field: "categories",
+  webflow_default_category_id: "",
+  webflow_reading_wpm: 220,
   image_provider: "placeholder",
   gemini_api_key: "",
   gemini_image_model: "gemini-3.1-flash-image",
   public_base_url: "",
   webflow_token: "",
+  webflow_site_id: "",
   webflow_collection_id: "",
   webflow_featured_default: false,
-  webflow_image_field: "",
 };
