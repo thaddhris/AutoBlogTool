@@ -222,6 +222,16 @@ function migrate(d: Database.Database) {
   // Tag set selected at request-creation time. Pool resources whose tags
   // overlap with this set are auto-attached at generation time.
   addColumn(d, "blog_requests", "tags_json", "TEXT NOT NULL DEFAULT '[]'");
+
+  // LLM-powered SEO audit caches. Populated when the admin clicks "Run SEO
+  // audit" on a blog; we cache so the editor doesn't burn tokens on every
+  // page load. Nullable — absence means "no audit run yet".
+  //  - seo_audit_json:      traditional SEO (Google-style ranker view)
+  //  - llm_seo_audit_json:  LLM/AI crawlability (RAG / AI-search view)
+  addColumn(d, "blogs", "seo_audit_json", "TEXT");
+  addColumn(d, "blogs", "seo_audit_at", "TEXT");
+  addColumn(d, "blogs", "llm_seo_audit_json", "TEXT");
+  addColumn(d, "blogs", "llm_seo_audit_at", "TEXT");
 }
 
 export function logEvent(

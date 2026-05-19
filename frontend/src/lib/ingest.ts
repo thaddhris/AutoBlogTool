@@ -5,7 +5,7 @@ import { ResourceType } from "./types";
 // Module-scoped guard so we set pdfjs's worker URL exactly once per process.
 let pdfWorkerSet = false;
 
-function chunkText(text: string, target = 900, overlap = 100): string[] {
+export function chunkText(text: string, target = 900, overlap = 100): string[] {
   const clean = text.replace(/\r\n/g, "\n").replace(/\s{3,}/g, "\n\n").trim();
   if (!clean) return [];
   const paras = clean.split(/\n{2,}/);
@@ -54,7 +54,14 @@ async function extractFromBuffer(
     const parser = new PDFParse({ data: new Uint8Array(buffer) });
     try {
       const out = await parser.getText();
-      return out.text ?? "";
+      // pdf-parse v2 sprinkles "-- N of M --" page-separator markers
+      // between/before every page of extracted text. They pollute every
+      // chunk and waste tokens. Strip them outright; the document order
+      // is preserved.
+      return (out.text ?? "")
+        .replace(/--\s*\d+\s+of\s+\d+\s*--/g, "")
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n");
     } finally {
       await parser.destroy().catch(() => {});
     }

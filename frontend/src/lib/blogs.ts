@@ -3,7 +3,9 @@ import {
   Blog,
   BlogStatus,
   FocusIntent,
+  LlmSeoAudit,
   QualityWarning,
+  SeoAudit,
 } from "./types";
 
 interface BlogRow {
@@ -37,6 +39,8 @@ interface BlogRow {
   sources_json: string | null;
   internal_links_resolved: number | null;
   word_count: number | null;
+  seo_audit_json: string | null;
+  llm_seo_audit_json: string | null;
   status: string;
   scheduled_at: string | null;
   published_at: string | null;
@@ -52,6 +56,32 @@ function safeArr<T>(s: string | null | undefined, fallback: T[]): T[] {
     return Array.isArray(v) ? (v as T[]) : fallback;
   } catch {
     return fallback;
+  }
+}
+
+function parseSeoAudit(s: string | null | undefined): SeoAudit | null {
+  if (!s) return null;
+  try {
+    const v = JSON.parse(s);
+    if (v && typeof v === "object" && typeof v.overall_score === "number") {
+      return v as SeoAudit;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function parseLlmSeoAudit(s: string | null | undefined): LlmSeoAudit | null {
+  if (!s) return null;
+  try {
+    const v = JSON.parse(s);
+    if (v && typeof v === "object" && typeof v.overall_score === "number") {
+      return v as LlmSeoAudit;
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 
@@ -86,6 +116,8 @@ function rowToBlog(r: BlogRow): Blog {
     sources: safeArr<string>(r.sources_json, []),
     internal_links_resolved: r.internal_links_resolved ?? 0,
     word_count: r.word_count,
+    seo_audit: parseSeoAudit(r.seo_audit_json),
+    llm_seo_audit: parseLlmSeoAudit(r.llm_seo_audit_json),
     status: r.status as BlogStatus,
     scheduled_at: r.scheduled_at,
     published_at: r.published_at,
@@ -155,6 +187,8 @@ export type BlogPatch = Partial<{
   sources: string[];
   internal_links_resolved: number;
   word_count: number | null;
+  seo_audit: SeoAudit | null;
+  llm_seo_audit: LlmSeoAudit | null;
   status: BlogStatus;
   scheduled_at: string | null;
   published_at: string | null;
@@ -221,6 +255,24 @@ export function updateBlog(id: string, patch: BlogPatch): Blog | null {
   if (patch.internal_links_resolved !== undefined)
     setField("internal_links_resolved", patch.internal_links_resolved);
   if (patch.word_count !== undefined) setField("word_count", patch.word_count);
+  if (patch.seo_audit !== undefined) {
+    if (patch.seo_audit === null) {
+      setField("seo_audit_json", null);
+      setField("seo_audit_at", null);
+    } else {
+      setField("seo_audit_json", JSON.stringify(patch.seo_audit));
+      setField("seo_audit_at", patch.seo_audit.generated_at);
+    }
+  }
+  if (patch.llm_seo_audit !== undefined) {
+    if (patch.llm_seo_audit === null) {
+      setField("llm_seo_audit_json", null);
+      setField("llm_seo_audit_at", null);
+    } else {
+      setField("llm_seo_audit_json", JSON.stringify(patch.llm_seo_audit));
+      setField("llm_seo_audit_at", patch.llm_seo_audit.generated_at);
+    }
+  }
 
   if (!fields.length) return getBlog(id);
   fields.push(`updated_at = datetime('now')`);

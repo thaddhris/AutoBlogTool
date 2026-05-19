@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { marked } from "marked";
 import {
   Badge,
   Button,
@@ -13,6 +12,8 @@ import {
 } from "@/components/ui";
 import { Blog } from "@/lib/types";
 import { Pencil, X, Plus, Trash2, AlertTriangle } from "lucide-react";
+import SeoAuditPanel from "./SeoAuditPanel";
+import BodyEditor from "@/components/BodyEditor";
 
 type EditableFields = {
   title: string;
@@ -57,17 +58,18 @@ function lenBadge(value: string, [min, max]: [number, number]) {
   );
 }
 
-export default function BlogEditor({ blog }: { blog: Blog }) {
+export default function BlogEditor({
+  blog,
+  siteUrl,
+}: {
+  blog: Blog;
+  siteUrl: string;
+}) {
   const router = useRouter();
   const editable = blog.status === "draft" || blog.status === "scheduled";
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<EditableFields>(() => toForm(blog));
   const [saving, setSaving] = useState(false);
-
-  const rendered = useMemo(
-    () => marked.parse(blog.content_md || "", { async: false }) as string,
-    [blog.content_md],
-  );
 
   function update<K extends keyof EditableFields>(
     key: K,
@@ -157,8 +159,8 @@ export default function BlogEditor({ blog }: { blog: Blog }) {
           />
         )}
 
-        {editing ? (
-          <div className="space-y-3">
+        {editing && (
+          <div className="space-y-3 mb-4">
             <div>
               <Label required>Title</Label>
               <Input value={form.title} onChange={(e) => update("title", e.target.value)} />
@@ -178,63 +180,69 @@ export default function BlogEditor({ blog }: { blog: Blog }) {
                 onChange={(e) => update("excerpt", e.target.value)}
               />
             </div>
-            <div>
-              <Label>Body (markdown)</Label>
-              <Textarea
-                rows={22}
-                value={form.content_md}
-                onChange={(e) => update("content_md", e.target.value)}
-                className="font-mono text-xs leading-relaxed"
-              />
-              <p className="text-[11px] text-zinc-500 mt-1">
-                FAQ + Sources sections are auto-appended when published. Don&apos;t add them here.
-              </p>
-            </div>
           </div>
-        ) : (
-          <article className="prose-blog" dangerouslySetInnerHTML={{ __html: rendered }} />
+        )}
+
+        <BodyEditor
+          value={editing ? form.content_md : blog.content_md}
+          onChange={editing ? (v) => update("content_md", v) : undefined}
+          editable={editing}
+          metaTitle={editing ? form.meta_title : blog.meta_title}
+          metaDesc={editing ? form.meta_desc : blog.meta_desc}
+          slug={editing ? form.slug : blog.slug}
+          siteUrl={siteUrl}
+          publishedAt={blog.published_at}
+        />
+        {editing && (
+          <p className="text-[11px] text-zinc-500 mt-2">
+            The FAQ and Sources sections are added automatically when this
+            post is published — no need to paste them into the body.
+          </p>
         )}
       </Card>
 
       <div className="space-y-4">
+        {/* ── LLM SEO audit ── */}
+        <SeoAuditPanel blog={blog} />
+
         {/* ── Quality panel ── */}
         <Card>
           <div className="flex items-center justify-between mb-2">
             <div className="text-xs uppercase tracking-wide text-zinc-500">
-              Quality
+              Quality check
             </div>
             {blog.quality_warnings.length > 0 && (
               <Badge tone="amber">
-                {blog.quality_warnings.length} warning
+                {blog.quality_warnings.length} issue
                 {blog.quality_warnings.length === 1 ? "" : "s"}
               </Badge>
             )}
           </div>
           <dl className="text-sm space-y-2">
             <Metric
-              label="Readability (Flesch)"
+              label="Reading ease"
               value={blog.readability_score}
               format={(n) => n.toFixed(1)}
-              target="50–75"
+              target="50–75 (higher = easier)"
             />
             <Metric
-              label="Keyword density"
+              label="Main keyword usage"
               value={blog.keyword_density}
               format={(n) => `${(n * 100).toFixed(2)}%`}
               target="0.5%–2%"
             />
             <Metric
-              label="Uniqueness (max sim.)"
+              label="Originality"
               value={blog.uniqueness_score}
-              format={(n) => `${(n * 100).toFixed(1)}%`}
-              target="< 85%"
+              format={(n) => `${(100 - n * 100).toFixed(0)}% unique`}
+              target="not too similar to past posts"
             />
             <div className="flex items-center justify-between text-xs">
               <span className="text-zinc-500">Word count</span>
               <span className="text-zinc-700">{blog.word_count ?? "—"}</span>
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-zinc-500">Internal links resolved</span>
+              <span className="text-zinc-500">Links to other posts</span>
               <span className="text-zinc-700">{blog.internal_links_resolved}</span>
             </div>
           </dl>
@@ -251,14 +259,19 @@ export default function BlogEditor({ blog }: { blog: Blog }) {
           {blog.claims_to_verify.length > 0 && (
             <details className="mt-3 text-xs">
               <summary className="cursor-pointer text-zinc-600 hover:text-zinc-900">
-                {blog.claims_to_verify.length} claim
-                {blog.claims_to_verify.length === 1 ? "" : "s"} to verify
+                {blog.claims_to_verify.length} fact
+                {blog.claims_to_verify.length === 1 ? "" : "s"} to double-check
               </summary>
               <ul className="list-disc pl-5 mt-2 space-y-1 text-zinc-700">
                 {blog.claims_to_verify.map((c, i) => (
                   <li key={i}>{c}</li>
                 ))}
               </ul>
+              <p className="text-[11px] text-zinc-500 mt-1">
+                These sentences contain specific numbers, percentages, or
+                years that the AI might have made up. Verify them before
+                publishing.
+              </p>
             </details>
           )}
         </Card>
@@ -270,7 +283,7 @@ export default function BlogEditor({ blog }: { blog: Blog }) {
             <div className="space-y-3">
               <div>
                 <div className="flex items-center justify-between">
-                  <Label>Meta tag (Webflow)</Label>
+                  <Label>SEO title</Label>
                   {lenBadge(form.meta_title, [50, 60])}
                 </div>
                 <Input
@@ -280,7 +293,7 @@ export default function BlogEditor({ blog }: { blog: Blog }) {
               </div>
               <div>
                 <div className="flex items-center justify-between">
-                  <Label>Meta description</Label>
+                  <Label>SEO description</Label>
                   {lenBadge(form.meta_desc, [150, 160])}
                 </div>
                 <Textarea
@@ -290,17 +303,18 @@ export default function BlogEditor({ blog }: { blog: Blog }) {
                 />
               </div>
               <div>
-                <Label>Primary keyword</Label>
+                <Label>Main keyword</Label>
                 <Input
                   value={form.primary_keyword}
                   onChange={(e) => update("primary_keyword", e.target.value)}
                 />
                 <p className="text-[11px] text-zinc-500 mt-1">
-                  Drives the keyword-density check. Not sent to Webflow.
+                  The one phrase this post should rank for in Google. Used
+                  to check how often it appears in the writing.
                 </p>
               </div>
               <div>
-                <Label>Secondary keywords (comma-separated)</Label>
+                <Label>Related keywords (comma-separated)</Label>
                 <Input
                   value={form.secondary_keywords}
                   onChange={(e) =>
@@ -308,8 +322,8 @@ export default function BlogEditor({ blog }: { blog: Blog }) {
                   }
                 />
                 <p className="text-[11px] text-zinc-500 mt-1">
-                  Used by the internal-link resolver to match this post against
-                  other drafts. Not sent to Webflow.
+                  Other phrases this post covers. Helps the AI link related
+                  posts on your site together.
                 </p>
               </div>
               <div>
@@ -323,18 +337,18 @@ export default function BlogEditor({ blog }: { blog: Blog }) {
           ) : (
             <dl className="text-sm space-y-2">
               <Row
-                k="Meta tag"
+                k="SEO title"
                 v={blog.meta_title}
                 badge={lenBadge(blog.meta_title, [50, 60])}
               />
               <Row
-                k="Meta description"
+                k="SEO description"
                 v={blog.meta_desc}
                 badge={lenBadge(blog.meta_desc, [150, 160])}
               />
-              <Row k="Primary keyword" v={blog.primary_keyword || "—"} />
+              <Row k="Main keyword" v={blog.primary_keyword || "—"} />
               <Row
-                k="Secondary keywords"
+                k="Related keywords"
                 v={blog.secondary_keywords.join(", ") || "—"}
               />
               <Row k="Tags" v={blog.tags.join(", ") || "—"} />
@@ -357,7 +371,8 @@ export default function BlogEditor({ blog }: { blog: Blog }) {
                 placeholder="https://example.com/article (one per line)"
               />
               <p className="text-[11px] text-zinc-500 mt-1">
-                Rendered as a Sources list at the bottom of the published post.
+                These show up as a &ldquo;Sources&rdquo; list at the bottom
+                of the published post.
               </p>
             </div>
           ) : (

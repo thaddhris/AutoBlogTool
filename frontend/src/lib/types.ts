@@ -77,6 +77,82 @@ export type BlogStatus =
 
 export type FocusIntent = "informational" | "commercial" | "transactional";
 
+// ─── LLM-powered SEO audit ──────────────────────────────────────────────────
+//
+// Two parallel audits run on every blog:
+//   - Traditional SEO: how a Google-style crawler/ranker sees the post.
+//   - LLM/AI SEO: how an LLM-driven search or RAG system sees the post.
+
+export type SeoAspectKey =
+  | "keyword_optimization"
+  | "metadata"
+  | "heading_structure"
+  | "readability"
+  | "internal_linking"
+  | "schema_markup"
+  | "alt_text"
+  | "content_structure";
+
+export type LlmSeoAspectKey =
+  | "semantic_clarity"
+  | "ai_readability"
+  | "retrieval_friendliness"
+  | "chunk_quality"
+  | "answerability"
+  | "citation_potential"
+  | "contextual_completeness"
+  | "embedding_optimization"
+  | "topic_coverage";
+
+export interface SeoAspect {
+  score: number; // 0–100
+  notes: string[]; // bullet-point findings
+}
+
+export interface SeoRecommendation {
+  priority: "high" | "medium" | "low";
+  aspect: SeoAspectKey;
+  action: string;
+  /** If the action can be auto-applied via the seo-apply endpoint, this is
+   *  the blog field name (`title_tag`, `meta_description`, `excerpt`,
+   *  `tldr`, or `faq`). */
+  field?: "title_tag" | "meta_description" | "excerpt" | "tldr" | "faq";
+}
+
+export interface SeoRewrites {
+  title_tag?: string;
+  meta_description?: string;
+  excerpt?: string;
+  tldr?: string;
+  faq?: { q: string; a: string }[];
+}
+
+export interface SeoAudit {
+  overall_score: number; // 0–100
+  aspects: Record<SeoAspectKey, SeoAspect>;
+  recommendations: SeoRecommendation[];
+  rewrites: SeoRewrites;
+  /** ISO timestamp of when the audit was produced. */
+  generated_at: string;
+  /** Snapshot of the blog state when audit ran (so admins know it's stale
+   *  if they've edited since). */
+  blog_updated_at_at_audit: string;
+}
+
+export interface LlmSeoRecommendation {
+  priority: "high" | "medium" | "low";
+  aspect: LlmSeoAspectKey;
+  action: string;
+}
+
+export interface LlmSeoAudit {
+  overall_score: number; // 0–100
+  aspects: Record<LlmSeoAspectKey, SeoAspect>;
+  recommendations: LlmSeoRecommendation[];
+  generated_at: string;
+  blog_updated_at_at_audit: string;
+}
+
 export interface QualityWarning {
   kind:
     | "readability"
@@ -121,6 +197,10 @@ export interface Blog {
   sources: string[];
   internal_links_resolved: number;
   word_count: number | null;
+  /** Cached traditional SEO audit. Null until the admin runs one. */
+  seo_audit: SeoAudit | null;
+  /** Cached LLM / AI-crawlability SEO audit. Null until the admin runs one. */
+  llm_seo_audit: LlmSeoAudit | null;
   // ── Lifecycle ──
   status: BlogStatus;
   scheduled_at: string | null;
@@ -140,9 +220,17 @@ export type Publisher = "markdown" | "webflow";
 
 export type ImageProvider = "placeholder" | "gemini" | "pexels";
 
+export type WriterProvider = "groq" | "gemini";
+
 export interface Settings {
+  /** Which LLM provider writes the blog posts. Image generation has its
+   *  own `image_provider` setting and is independent of this one. */
+  writer_provider: WriterProvider;
   groq_api_key: string;
   groq_model: string;
+  /** Gemini model used for writing (when `writer_provider === "gemini"`).
+   *  Distinct from `gemini_image_model` which is used only for hero images. */
+  gemini_text_model: string;
   brand_name: string;
   brand_tone: string;
   cron_secret: string;
@@ -161,6 +249,11 @@ export interface Settings {
   gemini_api_key: string;
   gemini_image_model: string;
   pexels_api_key: string;
+  /** Max inline Pexels images to insert into the post body. 0 = off. The
+   *  LLM is asked to drop [[image: query]] placeholders during body
+   *  generation; the platform resolves them via Pexels (requires
+   *  pexels_api_key). Hero banner is unaffected — it uses image_provider. */
+  inline_images_max: number;
   // Absolute base URL (e.g. https://autoblogtool.iocompute.ai). Used to turn
   // locally-saved banners into URLs that Webflow can fetch.
   public_base_url: string;
@@ -195,8 +288,10 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  writer_provider: "groq",
   groq_api_key: "",
   groq_model: "llama-3.3-70b-versatile",
+  gemini_text_model: "gemini-2.5-flash",
   brand_name: "Faclon Labs",
   brand_tone:
     "Authoritative, technical-but-accessible, focused on industrial AI / IoT outcomes for plant operations leaders. Avoid hype; emphasize concrete value and ROI.",
@@ -226,6 +321,7 @@ export const DEFAULT_SETTINGS: Settings = {
   gemini_api_key: "",
   gemini_image_model: "gemini-3.1-flash-image",
   pexels_api_key: "",
+  inline_images_max: 0,
   public_base_url: "",
   webflow_token: "",
   webflow_site_id: "",

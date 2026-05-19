@@ -7,11 +7,13 @@ import { runQualityChecks } from "./quality";
 import { jsonLdObjects } from "./seo";
 import { Blog } from "./types";
 
+// Same wide-tolerance philosophy as pipeline.ts — quality warnings flag
+// suboptimal lengths; Zod just rejects truly broken output.
 const BackfillSchema = z.object({
-  title_tag: z.string().min(20).max(60),
-  meta_description: z.string().min(120).max(165),
+  title_tag: z.string().min(10).max(80),
+  meta_description: z.string().min(50).max(200),
   primary_keyword: z.string().min(2).max(80),
-  secondary_keywords: z.array(z.string().min(2).max(80)).min(3).max(6),
+  secondary_keywords: z.array(z.string().min(2).max(80)).min(2).max(8),
 });
 
 type BackfillFields = z.infer<typeof BackfillSchema>;

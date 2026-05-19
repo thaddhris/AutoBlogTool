@@ -282,6 +282,110 @@ async function pexelsBanner(input: GenerateBannerInput): Promise<Banner> {
   };
 }
 
+// ─── inline body images via Pexels (hybrid mode) ────────────────────────────
+//
+// The hero banner uses whatever `image_provider` is configured (placeholder /
+// gemini / pexels). INLINE body images always come from Pexels, gated by
+// `inline_images_max`. The LLM is told to emit `[[image: short query]]`
+// placeholders during body generation; this resolver walks them, fetches
+// real photos, and splices markdown image syntax back in.
+
+const INLINE_PLACEHOLDER_RE = /\[\[image:\s*([^\]]+?)\s*]]/gi;
+
+export interface InlineImageResult {
+  body: string;
+  resolved: number;
+  skipped: number;
+  attributions: string[];
+}
+
+async function pexelsInlineImage(
+  query: string,
+): Promise<{ url: string; alt: string; photographer: string } | null> {
+  const settings = getSettings();
+  const key = settings.pexels_api_key;
+  if (!key) throw new Error("Pexels API key not configured");
+  const url =
+    `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}` +
+    `&per_page=8&orientation=landscape&size=medium`;
+  const res = await fetch(url, { headers: { Authorization: key } });
+  if (!res.ok) throw new Error(`Pexels ${res.status}`);
+  const data = (await res.json()) as PexelsResponse;
+  if (!data.photos?.length) return null;
+  const pool = data.photos.slice(0, Math.min(3, data.photos.length));
+  const photo = pool[Math.floor(Math.random() * pool.length)];
+  const src = photo.src.large || photo.src.medium || photo.src.original;
+  const img = await fetch(src);
+  if (!img.ok) return null;
+  const buf = Buffer.from(await img.arrayBuffer());
+  ensureBannersDir();
+  const id = `inline-${Date.now().toString(36)}-${nanoid(6)}`;
+  const filename = `${id}.jpg`;
+  fs.writeFileSync(path.join(BANNERS_DIR, filename), buf);
+  const alt =
+    (photo.alt?.trim() || query) +
+    ` (Photo by ${photo.photographer} on Pexels)`;
+  return { url: `/banners/${filename}`, alt, photographer: photo.photographer };
+}
+
+/**
+ * Walk `[[image: short query]]` placeholders in the markdown body. For each:
+ *   - if we're at the cap → drop the placeholder cleanly
+ *   - else hit Pexels, save the image, replace placeholder with a markdown
+ *     image surrounded by blank lines so marked renders it as a block
+ *
+ * Always returns a usable body — never throws. If Pexels isn't configured
+ * or fails, all placeholders are stripped so the post stays clean.
+ */
+export async function resolveInlineImages(
+  body: string,
+  max: number,
+): Promise<InlineImageResult> {
+  const stripAll = () => ({
+    body: body.replace(INLINE_PLACEHOLDER_RE, ""),
+    resolved: 0,
+    skipped: 0,
+    attributions: [] as string[],
+  });
+  if (max <= 0) return stripAll();
+  const settings = getSettings();
+  if (!settings.pexels_api_key) return stripAll();
+
+  const matches = Array.from(body.matchAll(INLINE_PLACEHOLDER_RE));
+  if (matches.length === 0)
+    return { body, resolved: 0, skipped: 0, attributions: [] };
+
+  let resolved = 0;
+  let skipped = 0;
+  const attributions: string[] = [];
+  const replacements: string[] = [];
+  for (let i = 0; i < matches.length; i++) {
+    if (resolved >= max) {
+      replacements.push("");
+      skipped++;
+      continue;
+    }
+    const query = matches[i][1].trim();
+    try {
+      const img = await pexelsInlineImage(query);
+      if (!img) {
+        replacements.push("");
+        skipped++;
+        continue;
+      }
+      replacements.push(`\n\n![${img.alt}](${img.url})\n\n`);
+      attributions.push(`Photo by ${img.photographer} on Pexels`);
+      resolved++;
+    } catch {
+      replacements.push("");
+      skipped++;
+    }
+  }
+  let idx = 0;
+  const out = body.replace(INLINE_PLACEHOLDER_RE, () => replacements[idx++] ?? "");
+  return { body: out, resolved, skipped, attributions };
+}
+
 // ─── public entrypoint ──────────────────────────────────────────────────────
 
 /**

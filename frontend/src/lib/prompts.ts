@@ -97,14 +97,11 @@ Topic / context: {{topic}}
 ## Approved outline (follow this; each numbered item is an H2 section)
 {{outline}}
 
-## TL;DR to include verbatim at the very top under a "## TL;DR" heading
-{{tldr}}
-
 ## Target length
 Approximately {{words_target}} words total.
 
 Now write the full blog post body in Markdown.
-- Start with a "## TL;DR" block using the text above, then a 1–2 paragraph intro.
+- Open with a 1–2 paragraph intro that hooks the reader and previews the post. Do NOT include a "TL;DR" heading or block.
 - Follow the outline order. Each numbered item becomes an H2 (##). Use H3 (###) for sub-points if needed.
 - Include AT LEAST one bullet list AND one markdown table somewhere in the body.
 - Include 2–3 internal-link placeholders shaped like [[related: short topic or keyword]] — these will be resolved automatically by the platform.
@@ -151,4 +148,10 @@ export const BODY_PLACEHOLDERS: PlaceholderDoc[] = [
   { name: "tldr", description: "outline.tldr — the 2–3 sentence answer", example: "Predictive maintenance cuts downtime by…" },
   { name: "outline", description: "Rendered outline (numbered list with bullets)", example: "1. Heading\\n   - bullet\\n   - bullet" },
   { name: "words_target", description: "Settings → Target word count", example: "1200" },
+  {
+    name: "inline_image_instructions",
+    description:
+      "Hybrid-image hint that asks the LLM to drop [[image: query]] placeholders for inline Pexels photos. Expands to empty when inline_images_max = 0 or Pexels key missing. Place this just before 'Now write the full blog post body…' so the model sees it as a prerequisite.",
+    example: "## Inline images\\nDrop 2 short [[image: …]] placeholders inline…",
+  },
 ];

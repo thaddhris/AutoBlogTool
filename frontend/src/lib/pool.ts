@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import { db, logEvent } from "./db";
 import { normalizeTags } from "./requests";
 import {
@@ -148,6 +149,117 @@ export function deletePoolResource(id: string): boolean {
     logEvent("pool.resource.delete", id);
   }
   return info.changes > 0;
+}
+
+/** Rename a pool resource. Other fields use dedicated functions. */
+export function renamePoolResource(id: string, name: string): PoolResource | null {
+  db()
+    .prepare(
+      `UPDATE pool_resources SET name = ?, updated_at = datetime('now') WHERE id = ?`,
+    )
+    .run(name, id);
+  return getPoolResource(id);
+}
+
+/**
+ * Replace the content of a note-type pool resource. Drops + recreates the
+ * chunks (FTS triggers stay in sync automatically). Only supported for
+ * `type='note'` — binary resources (pdf/docx) require a fresh upload and
+ * url-type resources should be re-fetched.
+ */
+export function replaceNoteContent(
+  id: string,
+  text: string,
+  chunkText: (s: string) => string[],
+): PoolResource | null {
+  const row = db()
+    .prepare<[string], { type: string }>(
+      `SELECT type FROM pool_resources WHERE id = ?`,
+    )
+    .get(id);
+  if (!row) return null;
+  if (row.type !== "note") {
+    throw new Error(
+      `replaceNoteContent only supports note-type resources (got '${row.type}'). Delete and re-upload instead.`,
+    );
+  }
+
+  const chunks = chunkText(text);
+  const tx = db().transaction(() => {
+    db().prepare(`DELETE FROM pool_chunks WHERE resource_id = ?`).run(id);
+    const insert = db().prepare(
+      `INSERT INTO pool_chunks (id, resource_id, content, position)
+       VALUES (?, ?, ?, ?)`,
+    );
+    for (let i = 0; i < chunks.length; i++) {
+      insert.run(nanoid(12), id, chunks[i], i);
+    }
+    db()
+      .prepare(
+        `UPDATE pool_resources
+         SET content = ?, status = 'ready', error = NULL,
+             updated_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .run(text, id);
+  });
+  tx();
+  logEvent("pool.resource.edit", id, { payload: { chunks: chunks.length } });
+  return getPoolResource(id);
+}
+
+/**
+ * Re-index a pool resource from its existing `content` (no re-fetch, no
+ * re-extraction). Used to pick up improvements in the chunker or to recover
+ * from a bad ingest without making the admin delete + re-upload. Note-type
+ * resources can also use replaceNoteContent for the same effect; this one
+ * works for every type as long as content is non-empty.
+ */
+export function reindexPoolResource(
+  id: string,
+  chunkText: (s: string) => string[],
+): PoolResource | null {
+  const row = db()
+    .prepare<[string], { content: string }>(
+      `SELECT content FROM pool_resources WHERE id = ?`,
+    )
+    .get(id);
+  if (!row) return null;
+  if (!row.content || !row.content.trim()) {
+    throw new Error(
+      "Resource has no stored content. Delete and re-upload to extract from the original source.",
+    );
+  }
+  // Also strip any leftover "-- N of M --" page markers from older ingests.
+  const cleaned = row.content
+    .replace(/--\s*\d+\s+of\s+\d+\s*--/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  const chunks = chunkText(cleaned);
+  const tx = db().transaction(() => {
+    db().prepare(`DELETE FROM pool_chunks WHERE resource_id = ?`).run(id);
+    const insert = db().prepare(
+      `INSERT INTO pool_chunks (id, resource_id, content, position)
+       VALUES (?, ?, ?, ?)`,
+    );
+    for (let i = 0; i < chunks.length; i++) {
+      insert.run(nanoid(12), id, chunks[i], i);
+    }
+    db()
+      .prepare(
+        `UPDATE pool_resources
+         SET content = ?, status = 'ready', error = NULL,
+             updated_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .run(cleaned, id);
+  });
+  tx();
+  logEvent("pool.resource.reindex", id, {
+    payload: { chunks: chunks.length, cleaned_length: cleaned.length },
+  });
+  return getPoolResource(id);
 }
 
 export function poolResourceCount(): number {

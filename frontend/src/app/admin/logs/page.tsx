@@ -9,10 +9,10 @@ export default async function LogsPage() {
   return (
     <div className="p-8 space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Logs</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Activity log</h1>
         <p className="text-sm text-zinc-500 mt-1">
-          Every step the pipeline takes lands here — generation, scheduling,
-          publishing, image errors. Newest first.
+          Everything that happens behind the scenes — when posts get written,
+          scheduled, published, and any errors along the way. Newest first.
         </p>
       </div>
       <LogsView initialLogs={logs} initialKinds={kinds} />

@@ -5,7 +5,7 @@ import { getSettings } from "./settings";
 import { llmJsonValidated, llmText } from "./ai";
 import { retrieve, requestCorpusSnippet, retrieveFromPool } from "./rag";
 import { keywordSlug, jsonLdObjects } from "./seo";
-import { generateBanner } from "./images";
+import { generateBanner, resolveInlineImages } from "./images";
 import { getRequest, updateRequest } from "./requests";
 import { getBlog, getBlogByRequest, updateBlog } from "./blogs";
 import { resolveInternalLinks } from "./internalLinks";
@@ -46,16 +46,22 @@ function renderTemplate(
 // we used to hit with Groq's strict JSON mode. Validation runs on the outline
 // only — the body is post-processed mechanically.
 
+// Zod gates are deliberately wide — they catch garbage (empty strings, model
+// hallucinating a paragraph in a title field) but don't enforce SEO best
+// practice. Soft constraints (Flesch range, density 0.5–2%, title_tag 50–60,
+// meta_desc 150–160) live in quality.ts and surface as warnings on the blog
+// detail page instead of failing the whole generation. This keeps the
+// pipeline robust against Groq output that's slightly off-target.
 const OutlineSchema = z.object({
   title_tag: z
     .string()
-    .min(20, "title_tag must be at least 20 chars")
-    .max(60, "title_tag must be at most 60 chars"),
+    .min(10, "title_tag must be at least 10 chars")
+    .max(80, "title_tag must be at most 80 chars"),
   meta_description: z
     .string()
-    .min(120, "meta_description must be at least 120 chars")
-    .max(165, "meta_description must be at most 165 chars"),
-  h1: z.string().min(10, "h1 must be at least 10 chars").max(120),
+    .min(50, "meta_description must be at least 50 chars")
+    .max(200, "meta_description must be at most 200 chars"),
+  h1: z.string().min(5, "h1 must be at least 5 chars").max(160),
   slug_seed: z
     .string()
     .min(2)
@@ -63,29 +69,29 @@ const OutlineSchema = z.object({
     .regex(/^[a-z0-9-]+$/, "slug_seed must be kebab-case ascii")
     .optional(),
   primary_keyword: z.string().min(2).max(80),
-  secondary_keywords: z.array(z.string().min(2).max(80)).min(3).max(6),
-  tldr: z.string().min(80).max(500),
-  excerpt: z.string().min(40).max(280),
-  tags: z.array(z.string().min(2).max(40)).min(2).max(5),
+  secondary_keywords: z.array(z.string().min(2).max(80)).min(2).max(8),
+  tldr: z.string().min(50).max(700),
+  excerpt: z.string().min(20).max(320),
+  tags: z.array(z.string().min(2).max(40)).min(1).max(8),
   outline: z
     .array(
       z.object({
-        heading: z.string().min(4).max(120),
-        bullets: z.array(z.string().min(4).max(220)).min(2).max(6),
-      }),
-    )
-    .min(4)
-    .max(8),
-  faq: z
-    .array(
-      z.object({
-        q: z.string().min(8).max(200),
-        a: z.string().min(20).max(700),
+        heading: z.string().min(3).max(160),
+        bullets: z.array(z.string().min(3).max(280)).min(1).max(8),
       }),
     )
     .min(3)
-    .max(5),
-  sources: z.array(z.string().url()).max(10).default([]),
+    .max(10),
+  faq: z
+    .array(
+      z.object({
+        q: z.string().min(5).max(240),
+        a: z.string().min(15).max(900),
+      }),
+    )
+    .min(2)
+    .max(8),
+  sources: z.array(z.string().url()).max(15).default([]),
 });
 
 type Outline = z.infer<typeof OutlineSchema>;
@@ -211,6 +217,18 @@ export async function generateBlogForRequest(requestId: string): Promise<Blog> {
         `${i + 1}. ${s.heading}\n${s.bullets.map((b) => `   - ${b}`).join("\n")}`,
     )
     .join("\n");
+  // Hybrid-image hint: tells the body writer to drop `[[image: query]]`
+  // placeholders when inline images are turned on AND a Pexels key exists.
+  // Expands to empty string when off — keeps the default template clean.
+  const inlineImagesEnabled =
+    (settings.inline_images_max ?? 0) > 0 && !!settings.pexels_api_key;
+  const inlineImageInstructions = inlineImagesEnabled
+    ? `## Inline images
+Drop ${Math.min(settings.inline_images_max, 5)} short [[image: search query]] placeholders inline at natural points where a photograph strengthens the post. Each query should be 2–5 concrete words a stock-photo library could match (e.g. [[image: cement plant rotary kiln]], [[image: industrial dashboard team]]). The platform resolves these to real photos automatically — DO NOT write markdown image syntax yourself.
+
+`
+    : "";
+
   const bodyVars: Record<string, string> = {
     ...baseVars,
     h1: outline.h1,
@@ -221,6 +239,7 @@ export async function generateBlogForRequest(requestId: string): Promise<Blog> {
     tldr: outline.tldr,
     outline: outlineForBody,
     words_target: String(settings.words_target),
+    inline_image_instructions: inlineImageInstructions,
   };
   const bodyTemplate =
     settings.body_user_template?.trim() || DEFAULT_BODY_USER;
@@ -258,6 +277,20 @@ export async function generateBlogForRequest(requestId: string): Promise<Blog> {
     );
   }
 
+  // ── Step 3b: resolve [[image: …]] placeholders with Pexels (hybrid mode) ──
+  // Hero comes from the configured image_provider; inline body images always
+  // come from Pexels because real photos read more credibly than AI for B2B.
+  const inlineMax = settings.inline_images_max ?? 0;
+  const inlineResult = await resolveInlineImages(body, inlineMax);
+  body = inlineResult.body;
+  if (inlineResult.resolved || inlineResult.skipped) {
+    logEvent(
+      "inline_images.resolve",
+      `resolved=${inlineResult.resolved} skipped=${inlineResult.skipped}`,
+      { requestId },
+    );
+  }
+
   // ── Step 4: banner ──
   const banner = await generateBanner({
     title: outline.h1,
@@ -267,6 +300,24 @@ export async function generateBlogForRequest(requestId: string): Promise<Blog> {
   });
 
   // ── Step 5: persist initial draft so quality checks can reference its id ──
+  // Regenerating a request should REPLACE the existing draft, not pile up
+  // a second one. We delete any non-published blog rows tied to this request
+  // before inserting the fresh draft. Published rows are preserved (the UI
+  // already blocks regenerate while a request is in 'published' state, so
+  // this is only a defensive guard).
+  const removed = db()
+    .prepare(
+      `DELETE FROM blogs WHERE request_id = ? AND status NOT IN ('published','publishing')`,
+    )
+    .run(requestId);
+  if (removed.changes > 0) {
+    logEvent(
+      "request.generate.replace",
+      `replaced ${removed.changes} prior draft${removed.changes === 1 ? "" : "s"}`,
+      { requestId },
+    );
+  }
+
   const slug = await uniqueSlug(
     outline.slug_seed ?? keywordSlug(outline.h1, outline.primary_keyword),
   );

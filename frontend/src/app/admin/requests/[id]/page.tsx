@@ -6,8 +6,10 @@ import { listPoolResources } from "@/lib/pool";
 import { getBlogByRequest } from "@/lib/blogs";
 import { Card } from "@/components/ui";
 import { RequestStatusBadge, BlogStatusBadge } from "@/components/StatusBadge";
+import { SeoScorePill } from "@/components/SeoScore";
 import RequestActions from "./RequestActions";
 import ResourcesPanel from "./ResourcesPanel";
+import BriefEditor from "./BriefEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -62,48 +64,7 @@ export default async function RequestDetailPage({
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">
-            Brief
-          </div>
-          <dl className="text-sm space-y-2">
-            <div>
-              <dt className="text-xs text-zinc-500">Keywords</dt>
-              <dd className="text-zinc-800">
-                {req.keywords.length ? req.keywords.join(", ") : "—"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-zinc-500">Resource-pool tags</dt>
-              <dd className="text-zinc-800">
-                {req.tags.length ? (
-                  <div className="flex flex-wrap gap-1 mt-0.5">
-                    {req.tags.map((t) => (
-                      <span
-                        key={t}
-                        className="text-[11px] px-2 py-0.5 rounded-full bg-violet-100 text-violet-800"
-                      >
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  "—"
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-zinc-500">Instructions</dt>
-              <dd className="text-zinc-800 whitespace-pre-wrap">
-                {req.instructions || "—"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-zinc-500">Priority</dt>
-              <dd className="text-zinc-800">{req.priority}</dd>
-            </div>
-          </dl>
-        </Card>
+        <BriefEditor request={req} />
 
         {blog && (
           <Card>
@@ -111,7 +72,10 @@ export default async function RequestDetailPage({
               <div className="text-xs uppercase tracking-wide text-zinc-500">
                 Generated blog
               </div>
-              <BlogStatusBadge status={blog.status} />
+              <div className="flex items-center gap-1.5">
+                <SeoScorePill audit={blog.seo_audit} showLabel />
+                <BlogStatusBadge status={blog.status} />
+              </div>
             </div>
             <Link
               href={`/admin/blogs/${blog.id}`}
@@ -122,6 +86,13 @@ export default async function RequestDetailPage({
             <div className="text-sm text-zinc-500 mt-1 line-clamp-3">
               {blog.excerpt}
             </div>
+            {blog.seo_audit && (
+              <div className="text-[11px] text-zinc-500 mt-2">
+                LLM SEO audit: {Math.round(blog.seo_audit.overall_score)}/100
+                · {blog.seo_audit.recommendations.length} recommendation
+                {blog.seo_audit.recommendations.length === 1 ? "" : "s"}
+              </div>
+            )}
           </Card>
         )}
       </div>

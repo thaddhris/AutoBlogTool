@@ -118,14 +118,14 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
             />
           </div>
           <div>
-            <Label>Resource-pool tags (comma separated)</Label>
+            <Label>Library tags (comma-separated)</Label>
             <Input
               name="tags"
               placeholder="ai, iot, predictive-maintenance"
             />
             <p className="text-[11px] text-zinc-500 mt-1">
-              Pool resources tagged with any of these will auto-attach at
-              generation time. See the Resource Pool page for available tags.
+              Pick tags from your Resource Library — any matching resources
+              get used as background reading when the AI writes this post.
             </p>
           </div>
           <div>

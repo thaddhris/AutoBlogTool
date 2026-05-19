@@ -161,18 +161,18 @@ export default function LogsView({
           <div className="flex-1 min-w-[200px]">
             <div className="text-xs text-zinc-500 mb-1">Search</div>
             <Input
-              placeholder="message, kind, request id, blog id…"
+              placeholder="Search by message, post, or request…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
           <div className="min-w-[180px]">
-            <div className="text-xs text-zinc-500 mb-1">Event kind</div>
+            <div className="text-xs text-zinc-500 mb-1">Event type</div>
             <Select
               value={kindFilter}
               onChange={(e) => setKindFilter(e.target.value)}
             >
-              <option value="">All kinds</option>
+              <option value="">All events</option>
               {kinds.map((k) => (
                 <option key={k} value={k}>
                   {k}
@@ -181,15 +181,15 @@ export default function LogsView({
             </Select>
           </div>
           <div className="min-w-[140px]">
-            <div className="text-xs text-zinc-500 mb-1">Level</div>
+            <div className="text-xs text-zinc-500 mb-1">Show</div>
             <Select
               value={level}
               onChange={(e) =>
                 setLevel(e.target.value as "all" | "errors")
               }
             >
-              <option value="all">All</option>
-              <option value="errors">Errors only</option>
+              <option value="all">Everything</option>
+              <option value="errors">Only errors</option>
             </Select>
           </div>
           <label className="flex items-center gap-2 text-sm text-zinc-700 pb-1.5">
@@ -199,7 +199,7 @@ export default function LogsView({
               onChange={(e) => setAutoRefresh(e.target.checked)}
               className="rounded border-zinc-300"
             />
-            Auto-refresh (5s)
+            Keep this page live (refresh every 5s)
           </label>
           <Button
             variant="secondary"
@@ -210,7 +210,7 @@ export default function LogsView({
             {busy ? "Refreshing…" : "Refresh"}
           </Button>
           <Button variant="danger" onClick={clearAll} type="button">
-            Clear all
+            Clear history
           </Button>
         </div>
 
@@ -277,7 +277,7 @@ export default function LogsView({
       <div className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
         {filtered.length === 0 && (
           <div className="px-6 py-12 text-center text-sm text-zinc-400">
-            No log entries match the current filters.
+            Nothing to show with the filters you picked.
           </div>
         )}
         {filtered.map((l) => {
@@ -340,8 +340,8 @@ export default function LogsView({
       </div>
 
       <div className="text-xs text-zinc-500">
-        Showing {filtered.length} of {logs.length} fetched events. Server
-        returns up to 200 newest. Click a row to expand its payload (if any).
+        Showing {filtered.length} of {logs.length} recent events. Click any row
+        to see more detail. We keep the last 200 events handy.
       </div>
     </div>
   );

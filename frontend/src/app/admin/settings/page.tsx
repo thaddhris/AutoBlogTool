@@ -10,8 +10,8 @@ export default async function SettingsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-zinc-500 mt-1">
-          API keys, queue tuning, brand voice, image generation, and publisher
-          target.
+          Connect your accounts, control how blogs are written, and pick where
+          they get published.
         </p>
       </div>
       <SettingsForm

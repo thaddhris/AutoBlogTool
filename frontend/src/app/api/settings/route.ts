@@ -41,8 +41,10 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   const body = (await request.json()) as Partial<Settings>;
   const allowed: (keyof Settings)[] = [
+    "writer_provider",
     "groq_api_key",
     "groq_model",
+    "gemini_text_model",
     "brand_name",
     "brand_tone",
     "cron_secret",
@@ -59,6 +61,7 @@ export async function PUT(request: NextRequest) {
     "gemini_api_key",
     "gemini_image_model",
     "pexels_api_key",
+    "inline_images_max",
     "public_base_url",
     "site_url",
     "webflow_token",

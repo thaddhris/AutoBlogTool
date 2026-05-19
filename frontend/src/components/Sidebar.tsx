@@ -16,7 +16,7 @@ import {
 const items = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/admin/requests", label: "Blog Requests", icon: FileText },
-  { href: "/admin/pool", label: "Resource Pool", icon: Library },
+  { href: "/admin/pool", label: "Resource Library", icon: Library },
   { href: "/admin/scheduled", label: "Scheduled", icon: Calendar },
   { href: "/admin/drafts", label: "Drafts", icon: PencilLine },
   { href: "/admin/published", label: "Published", icon: CheckCircle2 },

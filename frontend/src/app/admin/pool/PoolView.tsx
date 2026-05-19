@@ -4,7 +4,16 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, Input, Label, Textarea } from "@/components/ui";
 import { PoolResource } from "@/lib/types";
-import { FileText, Globe, StickyNote, Plus, Trash2, X } from "lucide-react";
+import {
+  FileText,
+  Globe,
+  StickyNote,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+  X,
+} from "lucide-react";
 import ClientTime from "@/components/ClientTime";
 
 const iconFor = (type: string) =>
@@ -26,6 +35,32 @@ export default function PoolView({
   const [active, setActive] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
   const [editingTagsFor, setEditingTagsFor] = useState<string | null>(null);
+  const [editingResource, setEditingResource] = useState<PoolResource | null>(
+    null,
+  );
+  const [tagQuery, setTagQuery] = useState("");
+  const [allTagsOpen, setAllTagsOpen] = useState(false);
+
+  // Tag filter UI: cap visible pills + provide a search box. Keeps the page
+  // tidy when a workspace accumulates dozens of tags.
+  const TAGS_PREVIEW = 12;
+  const visibleTags = useMemo(() => {
+    const q = tagQuery.trim().toLowerCase();
+    const filteredByQuery = q
+      ? initialTags.filter((t) => t.tag.includes(q))
+      : initialTags;
+    // Always include the active tag in the rendered set so a filtered pill
+    // stays visible even if the search box hides it.
+    if (active && !filteredByQuery.some((t) => t.tag === active)) {
+      const activeEntry = initialTags.find((t) => t.tag === active);
+      if (activeEntry) return [activeEntry, ...filteredByQuery];
+    }
+    return filteredByQuery;
+  }, [initialTags, tagQuery, active]);
+  const renderedTags = allTagsOpen
+    ? visibleTags
+    : visibleTags.slice(0, TAGS_PREVIEW);
+  const hiddenCount = Math.max(0, visibleTags.length - renderedTags.length);
 
   const filtered = useMemo(() => {
     if (!active) return initialResources;
@@ -37,6 +72,26 @@ export default function PoolView({
     const res = await fetch(`/api/pool/resources/${id}`, { method: "DELETE" });
     if (!res.ok) {
       alert("Delete failed");
+      return;
+    }
+    router.refresh();
+  }
+
+  async function reindex(id: string, name: string) {
+    if (
+      !confirm(
+        `Refresh "${name}"?\n\nThis re-reads the saved text and cleans up any old formatting issues (like page markers from older PDF uploads). The file, name, and tags all stay the same.`,
+      )
+    )
+      return;
+    const res = await fetch(`/api/pool/resources/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reindex: true }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(j.error || "Reindex failed");
       return;
     }
     router.refresh();
@@ -57,42 +112,79 @@ export default function PoolView({
       </div>
 
       <Card>
-        <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">
-          Filter by tag
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <div className="text-xs uppercase tracking-wide text-zinc-500">
+            Filter by tag
+          </div>
+          {initialTags.length > 0 && (
+            <Input
+              value={tagQuery}
+              onChange={(e) => setTagQuery(e.target.value)}
+              placeholder="Search tags…"
+              className="max-w-[220px] text-xs"
+            />
+          )}
         </div>
         {initialTags.length === 0 ? (
           <div className="text-xs text-zinc-400 italic">
-            No tags yet. Add a resource with at least one tag to populate this
-            list.
+            No tags yet. Add a resource and give it a tag to see it here.
           </div>
         ) : (
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={() => setActive(null)}
-              className={`text-xs px-2 py-1 rounded-full border transition-colors ${
-                active === null
-                  ? "bg-zinc-900 text-white border-zinc-900"
-                  : "bg-white border-zinc-300 text-zinc-700 hover:border-zinc-500"
-              }`}
-            >
-              all ({initialResources.length})
-            </button>
-            {initialTags.map((t) => (
+          <>
+            <div className="flex flex-wrap gap-1.5">
               <button
                 type="button"
-                key={t.tag}
-                onClick={() => setActive(t.tag === active ? null : t.tag)}
+                onClick={() => setActive(null)}
                 className={`text-xs px-2 py-1 rounded-full border transition-colors ${
-                  active === t.tag
+                  active === null
                     ? "bg-zinc-900 text-white border-zinc-900"
                     : "bg-white border-zinc-300 text-zinc-700 hover:border-zinc-500"
                 }`}
               >
-                {t.tag} <span className="opacity-60">{t.count}</span>
+                all ({initialResources.length})
               </button>
-            ))}
-          </div>
+              {renderedTags.map((t) => (
+                <button
+                  type="button"
+                  key={t.tag}
+                  onClick={() =>
+                    setActive(t.tag === active ? null : t.tag)
+                  }
+                  className={`text-xs px-2 py-1 rounded-full border transition-colors ${
+                    active === t.tag
+                      ? "bg-zinc-900 text-white border-zinc-900"
+                      : "bg-white border-zinc-300 text-zinc-700 hover:border-zinc-500"
+                  }`}
+                >
+                  {t.tag}{" "}
+                  <span className="opacity-60">{t.count}</span>
+                </button>
+              ))}
+              {visibleTags.length === 0 && tagQuery && (
+                <span className="text-xs text-zinc-400 italic px-2 py-1">
+                  No tag matches &ldquo;{tagQuery}&rdquo;
+                </span>
+              )}
+            </div>
+            {hiddenCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setAllTagsOpen(true)}
+                className="text-[11px] text-zinc-500 hover:text-zinc-900 underline mt-2"
+              >
+                Show {hiddenCount} more tag{hiddenCount === 1 ? "" : "s"}
+              </button>
+            )}
+            {allTagsOpen && visibleTags.length > TAGS_PREVIEW && (
+              <button
+                type="button"
+                onClick={() => setAllTagsOpen(false)}
+                className="text-[11px] text-zinc-500 hover:text-zinc-900 underline mt-2"
+              >
+                Collapse
+              </button>
+            )}
+          </>
         )}
       </Card>
 
@@ -169,13 +261,32 @@ export default function PoolView({
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => remove(r.id)}
-                        className="p-1 rounded hover:bg-zinc-100 text-zinc-500 hover:text-red-600"
-                        aria-label="Delete"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => reindex(r.id, r.name)}
+                          className="p-1 rounded hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900"
+                          aria-label="Refresh"
+                          title="Refresh — cleans up the saved text (useful after older uploads)"
+                        >
+                          <RefreshCw size={14} />
+                        </button>
+                        <button
+                          onClick={() => setEditingResource(r)}
+                          className="p-1 rounded hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900"
+                          aria-label="Edit"
+                          title="Edit"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          onClick={() => remove(r.id)}
+                          className="p-1 rounded hover:bg-zinc-100 text-zinc-500 hover:text-red-600"
+                          aria-label="Delete"
+                          title="Delete"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -186,6 +297,127 @@ export default function PoolView({
       </div>
 
       {showUpload && <UploadModal onClose={() => setShowUpload(false)} />}
+      {editingResource && (
+        <EditModal
+          resource={editingResource}
+          onClose={() => setEditingResource(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function EditModal({
+  resource,
+  onClose,
+}: {
+  resource: PoolResource;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [name, setName] = useState(resource.name);
+  const [tags, setTags] = useState(resource.tags.join(", "));
+  const [text, setText] = useState(resource.content);
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    setBusy(true);
+    try {
+      const payload: Record<string, unknown> = {
+        name,
+        tags: tags
+          .split(/[,\n]/)
+          .map((s) => s.trim())
+          .filter(Boolean),
+      };
+      // Only send `text` for note-type resources — the API rejects it for
+      // pdf/docx/url with a clear error.
+      if (resource.type === "note") payload.text = text;
+      const res = await fetch(`/api/pool/resources/${resource.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || "Save failed");
+      router.refresh();
+      onClose();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const canEditText = resource.type === "note";
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl space-y-3 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Edit pool resource</h2>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              {resource.type} · {resource.source}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 text-zinc-500 hover:text-zinc-900"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div>
+          <Label>Name</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+
+        <div>
+          <Label>Tags (comma-separated)</Label>
+          <Input
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+            placeholder="ai, iot, predictive-maintenance"
+          />
+        </div>
+
+        <div>
+          <Label>Content</Label>
+          {canEditText ? (
+            <Textarea
+              rows={14}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              className="font-mono text-xs"
+            />
+          ) : (
+            <>
+              <Textarea
+                rows={10}
+                value={resource.content}
+                readOnly
+                className="font-mono text-xs bg-zinc-50"
+              />
+              <p className="text-[11px] text-zinc-500 mt-1">
+                Only note content is editable. For {resource.type} resources,
+                delete and re-upload to replace the content.
+              </p>
+            </>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="ghost" type="button" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={busy} type="button">
+            {busy ? "Saving…" : "Save changes"}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -271,51 +503,86 @@ function TagCell({
   );
 }
 
+type SourceKind = "file" | "url" | "note";
+
 function UploadModal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [tab, setTab] = useState<"file" | "url" | "note">("file");
+  // `kind` is selected explicitly via the three-card picker. Until they pick
+  // one, no input is shown — removes the confusion of "do I fill them all?"
+  const [kind, setKind] = useState<SourceKind | null>(null);
   const [tags, setTags] = useState("");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [urlVal, setUrlVal] = useState("");
   const [noteName, setNoteName] = useState("");
   const [noteText, setNoteText] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function uploadFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setBusy(true);
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("tags", tags);
-      const res = await fetch("/api/pool/resources", {
-        method: "POST",
-        body: form,
-      });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error || "Upload failed");
-      router.refresh();
-      onClose();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-      if (fileRef.current) fileRef.current.value = "";
+  function onFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    setPendingFile(file);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  // When the user switches kind, clear inputs from the other kinds. Prevents
+  // half-filled inputs from non-selected sources getting lost mentally.
+  function selectKind(k: SourceKind) {
+    if (k === kind) return;
+    setKind(k);
+    if (k !== "file") setPendingFile(null);
+    if (k !== "url") setUrlVal("");
+    if (k !== "note") {
+      setNoteName("");
+      setNoteText("");
     }
   }
 
-  async function submitUrl() {
-    if (!urlVal.trim()) return;
+  const canSubmit =
+    !busy &&
+    ((kind === "file" && !!pendingFile) ||
+      (kind === "url" && urlVal.trim().length > 0) ||
+      (kind === "note" && noteText.trim().length > 0));
+
+  async function submit() {
+    if (!kind || !canSubmit) return;
     setBusy(true);
     try {
-      const res = await fetch("/api/pool/resources", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "url", source: urlVal.trim(), tags }),
-      });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error || "Fetch failed");
+      if (kind === "file") {
+        const form = new FormData();
+        form.append("file", pendingFile!);
+        form.append("tags", tags);
+        const res = await fetch("/api/pool/resources", {
+          method: "POST",
+          body: form,
+        });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.error || "Upload failed");
+      } else if (kind === "url") {
+        const res = await fetch("/api/pool/resources", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "url",
+            source: urlVal.trim(),
+            tags,
+          }),
+        });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.error || "Fetch failed");
+      } else {
+        const res = await fetch("/api/pool/resources", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "note",
+            text: noteText,
+            name: noteName.trim() || "Note",
+            tags,
+          }),
+        });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.error || "Save failed");
+      }
       router.refresh();
       onClose();
     } catch (err) {
@@ -325,36 +592,27 @@ function UploadModal({ onClose }: { onClose: () => void }) {
     }
   }
 
-  async function submitNote() {
-    if (!noteText.trim()) return;
-    setBusy(true);
-    try {
-      const res = await fetch("/api/pool/resources", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "note",
-          text: noteText,
-          name: noteName.trim() || "Note",
-          tags,
-        }),
-      });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error || "Save failed");
-      router.refresh();
-      onClose();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const submitLabel = !kind
+    ? "Pick a resource type above"
+    : kind === "file"
+      ? pendingFile
+        ? `Upload "${pendingFile.name}"`
+        : "Pick a file"
+      : kind === "url"
+        ? "Fetch URL"
+        : "Save note";
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl space-y-3">
+      <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-start justify-between">
-          <h2 className="text-lg font-semibold">Add pool resource</h2>
+          <div>
+            <h2 className="text-lg font-semibold">Add pool resource</h2>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              One resource per submission. To add several, save this one then
+              click <strong>Add resource</strong> again.
+            </p>
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -363,92 +621,182 @@ function UploadModal({ onClose }: { onClose: () => void }) {
             <X size={16} />
           </button>
         </div>
-        <div className="flex border-b border-zinc-200">
-          {(["file", "url", "note"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={`px-3 py-2 text-sm font-medium border-b-2 ${
-                tab === t
-                  ? "border-zinc-900 text-zinc-900"
-                  : "border-transparent text-zinc-500 hover:text-zinc-700"
-              }`}
-            >
-              {t === "file" ? "Upload PDF/DOCX" : t === "url" ? "Add URL" : "Add note"}
-            </button>
-          ))}
-        </div>
 
+        {/* Step 1 — pick exactly one type */}
         <div>
-          <Label>Tags (comma-separated)</Label>
-          <Input
-            value={tags}
-            onChange={(e) => setTags(e.target.value)}
-            placeholder="ai, iot, predictive-maintenance"
-          />
-          <p className="text-[11px] text-zinc-500 mt-1">
-            Blog requests that select any matching tag will retrieve this
-            resource at generation time.
-          </p>
+          <Label>What are you adding?</Label>
+          <div className="grid grid-cols-3 gap-2 mt-1">
+            <KindCard
+              icon={<FileText size={18} />}
+              title="File"
+              desc="PDF or DOCX"
+              active={kind === "file"}
+              onClick={() => selectKind("file")}
+            />
+            <KindCard
+              icon={<Globe size={18} />}
+              title="URL"
+              desc="Web page"
+              active={kind === "url"}
+              onClick={() => selectKind("url")}
+            />
+            <KindCard
+              icon={<StickyNote size={18} />}
+              title="Note"
+              desc="Pasted text"
+              active={kind === "note"}
+              onClick={() => selectKind("note")}
+            />
+          </div>
         </div>
 
-        {tab === "file" && (
-          <div className="space-y-2">
-            <p className="text-xs text-zinc-500">
-              Supported: PDF, DOCX. Text is extracted, chunked, and FTS-indexed.
-            </p>
+        {/* Step 2 — type-specific input (one only, ever) */}
+        {kind === "file" && (
+          <div>
+            <Label>File</Label>
             <input
               ref={fileRef}
               type="file"
               accept=".pdf,.docx,.doc"
               className="hidden"
-              onChange={uploadFile}
+              onChange={onFileChosen}
             />
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => fileRef.current?.click()}
-              disabled={busy}
-            >
-              {busy ? "Uploading…" : "Choose file"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => fileRef.current?.click()}
+                disabled={busy}
+              >
+                {pendingFile ? "Change file" : "Choose file"}
+              </Button>
+              {pendingFile ? (
+                <div className="flex items-center gap-1 text-xs text-zinc-700 min-w-0">
+                  <span className="truncate max-w-[220px]">
+                    {pendingFile.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPendingFile(null)}
+                    className="p-0.5 text-zinc-400 hover:text-red-600"
+                    aria-label="Clear file"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ) : (
+                <span className="text-xs text-zinc-400">No file chosen</span>
+              )}
+            </div>
+            <p className="text-[11px] text-zinc-500 mt-1">
+              Supported: PDF, DOCX. We read the text out of the file and save
+              it so the AI can search through it later.
+            </p>
           </div>
         )}
-        {tab === "url" && (
-          <div className="space-y-2">
+        {kind === "url" && (
+          <div>
             <Label>URL</Label>
             <Input
               value={urlVal}
               onChange={(e) => setUrlVal(e.target.value)}
               placeholder="https://…"
+              autoFocus
             />
-            <Button type="button" onClick={submitUrl} disabled={busy}>
-              {busy ? "Fetching…" : "Add"}
-            </Button>
+            <p className="text-[11px] text-zinc-500 mt-1">
+              We open the page, grab the readable text, and save it. Works for
+              most blog posts, docs, and product pages.
+            </p>
           </div>
         )}
-        {tab === "note" && (
+        {kind === "note" && (
           <div className="space-y-2">
-            <Label>Title (optional)</Label>
-            <Input
-              value={noteName}
-              onChange={(e) => setNoteName(e.target.value)}
-              placeholder="Internal product spec"
-            />
-            <Label>Body</Label>
-            <Textarea
-              rows={6}
-              value={noteText}
-              onChange={(e) => setNoteText(e.target.value)}
-              placeholder="Paste research notes, product details, internal docs…"
-            />
-            <Button type="button" onClick={submitNote} disabled={busy}>
-              {busy ? "Saving…" : "Save note"}
-            </Button>
+            <div>
+              <Label>Title (optional)</Label>
+              <Input
+                value={noteName}
+                onChange={(e) => setNoteName(e.target.value)}
+                placeholder="Internal product spec"
+                autoFocus
+              />
+            </div>
+            <div>
+              <Label>Body</Label>
+              <Textarea
+                rows={6}
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                placeholder="Paste research notes, product details, internal docs…"
+              />
+            </div>
           </div>
         )}
+
+        {/* Step 3 — shared categorization, only visible once a type is picked */}
+        {kind && (
+          <div className="pt-2 border-t border-zinc-100">
+            <Label>Tags (optional, comma-separated)</Label>
+            <Input
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder="ai, iot, predictive-maintenance"
+            />
+            <p className="text-[11px] text-zinc-500 mt-1">
+              When a blog request uses any of these tags, this resource is
+              automatically used as background reading.
+            </p>
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-100">
+          <Button variant="ghost" type="button" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={submit} disabled={!canSubmit}>
+            {busy ? "Saving…" : submitLabel}
+          </Button>
+        </div>
       </div>
     </div>
+  );
+}
+
+function KindCard({
+  icon,
+  title,
+  desc,
+  active,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`text-left p-3 rounded-md border-2 transition-colors ${
+        active
+          ? "border-zinc-900 bg-zinc-50"
+          : "border-zinc-200 hover:border-zinc-400 bg-white"
+      }`}
+    >
+      <div
+        className={`mb-1 ${active ? "text-zinc-900" : "text-zinc-500"}`}
+      >
+        {icon}
+      </div>
+      <div
+        className={`text-sm font-medium ${
+          active ? "text-zinc-900" : "text-zinc-800"
+        }`}
+      >
+        {title}
+      </div>
+      <div className="text-[11px] text-zinc-500">{desc}</div>
+    </button>
   );
 }
