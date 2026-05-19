@@ -48,12 +48,16 @@ export default function SettingsForm({
   hasWebflowToken,
   hasGeminiKey,
   hasPexelsKey,
+  hasFalKey,
+  hasFluxapiKey,
 }: {
   initial: Settings;
   hasGroqKey: boolean;
   hasWebflowToken: boolean;
   hasGeminiKey: boolean;
   hasPexelsKey: boolean;
+  hasFalKey: boolean;
+  hasFluxapiKey: boolean;
 }) {
   const router = useRouter();
   const [form, setForm] = useState<Settings>(initial);
@@ -77,6 +81,8 @@ export default function SettingsForm({
         "webflow_token",
         "gemini_api_key",
         "pexels_api_key",
+        "fal_api_key",
+        "fluxapi_api_key",
       ] as const) {
         const v = payload[k];
         if (typeof v === "string" && v.startsWith("•")) {
@@ -361,6 +367,8 @@ export default function SettingsForm({
             className="max-w-[260px]"
           >
             <option value="placeholder">Placeholder (colored gradient)</option>
+            <option value="fluxapi">FluxAPI · FLUX Kontext (AI-generated)</option>
+            <option value="fal">Fal AI · FLUX (AI-generated, fast + cheap)</option>
             <option value="gemini">Google Gemini (AI-generated, paid)</option>
             <option value="pexels">Pexels (real stock photos, free)</option>
           </Select>
@@ -401,6 +409,77 @@ export default function SettingsForm({
               <p className="text-[11px] text-zinc-500 mt-1">
                 Default works well. Change only if Google releases a newer
                 image model.
+              </p>
+            </div>
+          </div>
+        )}
+        {form.image_provider === "fluxapi" && (
+          <div className="space-y-3">
+            <div>
+              <Label required>FluxAPI key</Label>
+              <Input
+                value={form.fluxapi_api_key}
+                onChange={(e) =>
+                  update("fluxapi_api_key", e.target.value)
+                }
+                placeholder={
+                  hasFluxapiKey
+                    ? "(saved — type a new one to replace)"
+                    : "Your fluxapi.ai key"
+                }
+              />
+              <p className="text-[11px] text-zinc-500 mt-1">
+                Get one at <code>fluxapi.ai</code>. Generation is async — we
+                poll for up to ~3 minutes per banner.
+              </p>
+            </div>
+            <div>
+              <Label>Model</Label>
+              <Input
+                value={form.fluxapi_image_model}
+                onChange={(e) =>
+                  update("fluxapi_image_model", e.target.value)
+                }
+                placeholder="flux-kontext-pro"
+              />
+              <p className="text-[11px] text-zinc-500 mt-1">
+                <code>flux-kontext-pro</code> (default) or{" "}
+                <code>flux-kontext-max</code> for higher quality.
+              </p>
+            </div>
+          </div>
+        )}
+        {form.image_provider === "fal" && (
+          <div className="space-y-3">
+            <div>
+              <Label required>Fal AI API key</Label>
+              <Input
+                value={form.fal_api_key}
+                onChange={(e) => update("fal_api_key", e.target.value)}
+                placeholder={
+                  hasFalKey
+                    ? "(saved — type a new one to replace)"
+                    : "fal-…"
+                }
+              />
+              <p className="text-[11px] text-zinc-500 mt-1">
+                Get one at <code>fal.ai/dashboard/keys</code>. FLUX schnell
+                is ~$0.003 per image; the free tier gives a few hundred
+                images.
+              </p>
+            </div>
+            <div>
+              <Label>Model</Label>
+              <Input
+                value={form.fal_image_model}
+                onChange={(e) => update("fal_image_model", e.target.value)}
+                placeholder="fal-ai/flux/schnell"
+              />
+              <p className="text-[11px] text-zinc-500 mt-1">
+                <code>fal-ai/flux/schnell</code> is fast (~2–4s) and very
+                cheap. Try <code>fal-ai/flux/dev</code> for sharper output,
+                or <code>fal-ai/flux-pro/v1.1</code> for the best quality
+                (slower, paid).
               </p>
             </div>
           </div>

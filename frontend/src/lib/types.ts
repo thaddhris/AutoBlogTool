@@ -218,7 +218,12 @@ export type PublishMode = "auto" | "manual";
 
 export type Publisher = "markdown" | "webflow";
 
-export type ImageProvider = "placeholder" | "gemini" | "pexels";
+export type ImageProvider =
+  | "placeholder"
+  | "gemini"
+  | "pexels"
+  | "fal"
+  | "fluxapi";
 
 export type WriterProvider = "groq" | "gemini";
 
@@ -249,6 +254,16 @@ export interface Settings {
   gemini_api_key: string;
   gemini_image_model: string;
   pexels_api_key: string;
+  /** Fal AI key (https://fal.ai/dashboard/keys). Used for FLUX image
+   *  generation when `image_provider === "fal"`. */
+  fal_api_key: string;
+  /** Fal endpoint slug, e.g. "fal-ai/flux/schnell" (fast + cheap),
+   *  "fal-ai/flux/dev" (better quality), or "fal-ai/flux-pro/v1.1". */
+  fal_image_model: string;
+  /** fluxapi.ai key — used when `image_provider === "fluxapi"`. */
+  fluxapi_api_key: string;
+  /** fluxapi.ai model. Valid: "flux-kontext-pro" (default), "flux-kontext-max". */
+  fluxapi_image_model: string;
   /** Max inline Pexels images to insert into the post body. 0 = off. The
    *  LLM is asked to drop [[image: query]] placeholders during body
    *  generation; the platform resolves them via Pexels (requires
@@ -321,6 +336,10 @@ export const DEFAULT_SETTINGS: Settings = {
   gemini_api_key: "",
   gemini_image_model: "gemini-3.1-flash-image",
   pexels_api_key: "",
+  fal_api_key: "",
+  fal_image_model: "fal-ai/flux/schnell",
+  fluxapi_api_key: "",
+  fluxapi_image_model: "flux-kontext-pro",
   inline_images_max: 0,
   public_base_url: "",
   webflow_token: "",

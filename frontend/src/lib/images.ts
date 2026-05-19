@@ -154,6 +154,252 @@ async function geminiBanner(input: GenerateBannerInput): Promise<Banner> {
   };
 }
 
+// ─── fal (FLUX) ─────────────────────────────────────────────────────────────
+//
+// Fal AI hosts the FLUX family of text-to-image models. We hit the synchronous
+// endpoint at fal.run/<model>, which blocks until the image is ready (~2-5s
+// for flux-schnell, longer for flux-dev / flux-pro). The response shape is:
+//   { images: [{ url, width, height, content_type }], seed, has_nsfw_concepts, ... }
+//
+// We download the returned URL and persist a copy under public/banners/ so the
+// CMS publisher has a stable local path (Fal's signed URLs expire).
+
+interface FalImage {
+  url: string;
+  width?: number;
+  height?: number;
+  content_type?: string;
+}
+
+interface FalResponse {
+  images?: FalImage[];
+  detail?: string | { msg?: string }[];
+  error?: string;
+}
+
+async function falBanner(input: GenerateBannerInput): Promise<Banner> {
+  const settings = getSettings();
+  const key = settings.fal_api_key;
+  if (!key) throw new Error("Fal AI key not configured");
+  const model = settings.fal_image_model || "fal-ai/flux/schnell";
+
+  const prompt = buildImagePrompt(input);
+
+  // Schnell only accepts 1–4 inference steps; dev/pro accept 1–50.
+  const isSchnell = /schnell/i.test(model);
+  const body: Record<string, unknown> = {
+    prompt,
+    image_size: "landscape_16_9", // ~1024x576 — close enough to 1200x630.
+    num_images: 1,
+    enable_safety_checker: true,
+    num_inference_steps: isSchnell ? 4 : 28,
+  };
+
+  const url = `https://fal.run/${model}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Key ${key}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const raw = await res.text();
+  let parsed: FalResponse = {};
+  try {
+    parsed = raw ? (JSON.parse(raw) as FalResponse) : {};
+  } catch {
+    /* leave parsed empty */
+  }
+  if (!res.ok) {
+    const detail = Array.isArray(parsed.detail)
+      ? parsed.detail.map((d) => d.msg).join("; ")
+      : parsed.detail || parsed.error || raw.slice(0, 300) || res.statusText;
+    throw new Error(`Fal ${res.status}: ${detail}`);
+  }
+  const image = parsed.images?.[0];
+  if (!image?.url) {
+    throw new Error(
+      "Fal response contained no image URL. Check the model slug under Settings (e.g. 'fal-ai/flux/schnell').",
+    );
+  }
+
+  // Download Fal's signed URL and persist locally so Webflow / static hosting
+  // can fetch a stable path after the upstream URL expires.
+  const imgRes = await fetch(image.url);
+  if (!imgRes.ok) {
+    throw new Error(`Fal image download ${imgRes.status}`);
+  }
+  const buf = Buffer.from(await imgRes.arrayBuffer());
+  const mime = image.content_type || "image/png";
+  const ext = mime.includes("jpeg") ? "jpg" : mime.includes("webp") ? "webp" : "png";
+
+  ensureBannersDir();
+  const id = `${Date.now().toString(36)}-${nanoid(8)}`;
+  const filename = `${id}.${ext}`;
+  fs.writeFileSync(path.join(BANNERS_DIR, filename), buf);
+
+  return {
+    url: `/banners/${filename}`,
+    alt: `${input.brand} — ${input.title}`,
+  };
+}
+
+// ─── fluxapi.ai ─────────────────────────────────────────────────────────────
+//
+// fluxapi.ai is a third-party FLUX host (separate from Fal). It exposes an
+// async/queue API:
+//   POST  /api/v1/flux/kontext/generate     → { data: { taskId } }
+//   GET   /api/v1/flux/kontext/record-info?taskId=…
+//                                          → { data: { successFlag, response: { resultImageUrl } } }
+//
+// We POST once to enqueue, then poll record-info on a fixed interval until
+// the task reports SUCCESS (successFlag = 1) or one of the failure flags
+// (2 = create failed, 3 = generate failed). The model name from settings is
+// passed through; defaults to "flux-kontext-pro".
+//
+// The returned resultImageUrl expires after 14 days, so we download a copy
+// to public/banners/ for stable serving — same pattern as Fal and Gemini.
+
+interface FluxApiEnqueueResponse {
+  code?: number;
+  msg?: string;
+  data?: { taskId?: string };
+}
+
+interface FluxApiRecordResponse {
+  code?: number;
+  msg?: string;
+  data?: {
+    taskId?: string;
+    successFlag?: number; // 0=generating, 1=success, 2=create_failed, 3=generate_failed
+    errorCode?: number | null;
+    errorMessage?: string | null;
+    response?: {
+      originImageUrl?: string;
+      resultImageUrl?: string;
+    } | null;
+  };
+}
+
+async function sleep(ms: number) {
+  return new Promise<void>((res) => setTimeout(res, ms));
+}
+
+async function fluxapiBanner(input: GenerateBannerInput): Promise<Banner> {
+  const settings = getSettings();
+  const key = settings.fluxapi_api_key;
+  if (!key) throw new Error("FluxAPI key not configured");
+  const model = settings.fluxapi_image_model || "flux-kontext-pro";
+
+  const prompt = buildImagePrompt(input);
+  const enqueueRes = await fetch(
+    "https://api.fluxapi.ai/api/v1/flux/kontext/generate",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        prompt,
+        model,
+        aspectRatio: "16:9",
+        outputFormat: "jpeg",
+        // Defaults from doc: enableTranslation true, safetyTolerance 2.
+      }),
+    },
+  );
+  const enqueueRaw = await enqueueRes.text();
+  let enqueueJson: FluxApiEnqueueResponse = {};
+  try {
+    enqueueJson = enqueueRaw ? JSON.parse(enqueueRaw) : {};
+  } catch {
+    /* leave empty */
+  }
+  if (!enqueueRes.ok || enqueueJson.code !== 200) {
+    const msg = enqueueJson.msg || enqueueRaw.slice(0, 300) || enqueueRes.statusText;
+    throw new Error(`FluxAPI enqueue ${enqueueRes.status}: ${msg}`);
+  }
+  const taskId = enqueueJson.data?.taskId;
+  if (!taskId) {
+    throw new Error("FluxAPI enqueue response had no taskId");
+  }
+
+  // Poll for completion. flux-kontext-pro typically finishes in ~10–30s;
+  // give it up to ~3 minutes before we give up.
+  const POLL_INTERVAL_MS = 3000;
+  const MAX_POLLS = 60; // 60 × 3s = 180s
+  let resultUrl: string | undefined;
+  for (let i = 0; i < MAX_POLLS; i++) {
+    await sleep(POLL_INTERVAL_MS);
+    const pollRes = await fetch(
+      `https://api.fluxapi.ai/api/v1/flux/kontext/record-info?taskId=${encodeURIComponent(taskId)}`,
+      { headers: { Authorization: `Bearer ${key}` } },
+    );
+    const pollRaw = await pollRes.text();
+    let pollJson: FluxApiRecordResponse = {};
+    try {
+      pollJson = pollRaw ? JSON.parse(pollRaw) : {};
+    } catch {
+      /* keep empty */
+    }
+    if (!pollRes.ok) {
+      throw new Error(
+        `FluxAPI poll ${pollRes.status}: ${pollJson.msg || pollRaw.slice(0, 200)}`,
+      );
+    }
+    const flag = pollJson.data?.successFlag;
+    if (flag === 1) {
+      resultUrl = pollJson.data?.response?.resultImageUrl;
+      break;
+    }
+    if (flag === 2 || flag === 3) {
+      const parts: string[] = [`successFlag=${flag}`];
+      if (pollJson.data?.errorCode != null)
+        parts.push(`errorCode=${pollJson.data.errorCode}`);
+      if (pollJson.data?.errorMessage)
+        parts.push(`errorMessage="${pollJson.data.errorMessage}"`);
+      // Include the upstream response body — fluxapi sometimes returns useful
+      // hints (content-policy, model-not-available) outside the documented
+      // shape, and we'd otherwise have nothing to debug from.
+      parts.push(`raw=${pollRaw.slice(0, 300)}`);
+      throw new Error(`FluxAPI generation failed: ${parts.join(" · ")}`);
+    }
+    // flag === 0 or undefined → still generating, keep polling.
+  }
+  if (!resultUrl) {
+    throw new Error(
+      `FluxAPI timed out after ${(POLL_INTERVAL_MS * MAX_POLLS) / 1000}s without a result image`,
+    );
+  }
+
+  // Download the (signed, 14-day) URL and persist locally so Webflow has a
+  // stable path after the upstream URL expires.
+  const imgRes = await fetch(resultUrl);
+  if (!imgRes.ok) {
+    throw new Error(`FluxAPI image download ${imgRes.status}`);
+  }
+  const buf = Buffer.from(await imgRes.arrayBuffer());
+  // resultImageUrl from fluxapi is always jpeg/png — sniff via URL extension.
+  const lower = resultUrl.toLowerCase();
+  const ext = lower.includes(".png")
+    ? "png"
+    : lower.includes(".webp")
+      ? "webp"
+      : "jpg";
+  ensureBannersDir();
+  const id = `${Date.now().toString(36)}-${nanoid(8)}`;
+  const filename = `${id}.${ext}`;
+  fs.writeFileSync(path.join(BANNERS_DIR, filename), buf);
+
+  return {
+    url: `/banners/${filename}`,
+    alt: `${input.brand} — ${input.title}`,
+  };
+}
+
 // ─── pexels ─────────────────────────────────────────────────────────────────
 
 interface PexelsPhoto {
@@ -403,6 +649,24 @@ export async function generateBanner(input: GenerateBannerInput): Promise<Banner
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logEvent("image.generate.fail", `gemini → fallback: ${msg}`);
+    }
+  }
+
+  if (provider === "fal") {
+    try {
+      return await falBanner(input);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logEvent("image.generate.fail", `fal → fallback: ${msg}`);
+    }
+  }
+
+  if (provider === "fluxapi") {
+    try {
+      return await fluxapiBanner(input);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logEvent("image.generate.fail", `fluxapi → fallback: ${msg}`);
     }
   }
 
