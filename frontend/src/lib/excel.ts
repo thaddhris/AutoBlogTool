@@ -2,7 +2,14 @@ import * as XLSX from "xlsx";
 import { createRequest, CreateRequestInput, listRequests } from "./requests";
 import { BlogRequest } from "./types";
 
-const HEADERS = ["label", "topic", "keywords", "instructions", "priority"];
+const HEADERS = [
+  "label",
+  "topic",
+  "keywords",
+  "instructions",
+  "resource_tags",
+  "priority",
+];
 
 export function templateBuffer(): Buffer {
   const example = [
@@ -12,6 +19,7 @@ export function templateBuffer(): Buffer {
         "Predictive maintenance for rotary kilns: how IoT + AI cut unplanned downtime",
       keywords: "predictive maintenance, cement plant, rotary kiln, IoT",
       instructions: "Aim for plant operations heads, emphasize ROI numbers",
+      resource_tags: "ai, iot, predictive-maintenance",
       priority: 10,
     },
     {
@@ -19,6 +27,7 @@ export function templateBuffer(): Buffer {
       topic: "What OEE is, how it's measured, and quick wins to improve it",
       keywords: "OEE, overall equipment effectiveness, manufacturing KPI",
       instructions: "",
+      resource_tags: "analytics, automation",
       priority: 0,
     },
   ];
@@ -28,6 +37,7 @@ export function templateBuffer(): Buffer {
     { wch: 60 },
     { wch: 40 },
     { wch: 40 },
+    { wch: 30 },
     { wch: 10 },
   ];
   const wb = XLSX.utils.book_new();
@@ -43,6 +53,7 @@ export function exportBuffer(rows?: BlogRequest[]): Buffer {
     topic: r.topic,
     keywords: r.keywords.join(", "),
     instructions: r.instructions,
+    resource_tags: r.tags.join(", "),
     priority: r.priority,
     status: r.status,
     created_at: r.created_at,
@@ -62,11 +73,22 @@ export interface ImportResult {
   errors: { row: number; error: string }[];
 }
 
+function splitList(raw: unknown): string[] {
+  return String(raw ?? "")
+    .split(/[,;\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export function importBuffer(buf: Buffer): ImportResult {
   const wb = XLSX.read(buf, { type: "buffer" });
   const sheet = wb.Sheets[wb.SheetNames[0]];
   if (!sheet) {
-    return { created: 0, skipped: 0, errors: [{ row: 0, error: "Empty workbook" }] };
+    return {
+      created: 0,
+      skipped: 0,
+      errors: [{ row: 0, error: "Empty workbook" }],
+    };
   }
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     defval: "",
@@ -79,10 +101,10 @@ export function importBuffer(buf: Buffer): ImportResult {
       out.skipped++;
       return;
     }
-    const keywords = String(row.keywords ?? "")
-      .split(/[,;\n]/)
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const keywords = splitList(row.keywords);
+    // Accept both `resource_tags` (the documented column) and `tags` for
+    // ergonomics — admins sometimes shorten the header in their template.
+    const tags = splitList(row.resource_tags ?? row.tags);
     const instructions = String(row.instructions ?? "").trim();
     const priorityRaw = row.priority;
     const priority =
@@ -94,6 +116,7 @@ export function importBuffer(buf: Buffer): ImportResult {
         label,
         topic,
         keywords,
+        tags,
         instructions,
         priority,
       };

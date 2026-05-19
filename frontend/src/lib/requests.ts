@@ -8,6 +8,7 @@ interface RequestRow {
   topic: string;
   keywords_json: string;
   instructions: string;
+  tags_json: string | null;
   priority: number;
   status: string;
   blog_id: string | null;
@@ -23,6 +24,7 @@ function rowToRequest(r: RequestRow): BlogRequest {
     topic: r.topic,
     keywords: safeArray(r.keywords_json),
     instructions: r.instructions,
+    tags: safeArray(r.tags_json ?? "[]"),
     priority: r.priority,
     status: r.status as RequestStatus,
     blog_id: r.blog_id,
@@ -46,6 +48,7 @@ export interface CreateRequestInput {
   topic: string;
   keywords?: string[];
   instructions?: string;
+  tags?: string[];
   priority?: number;
 }
 
@@ -53,8 +56,9 @@ export function createRequest(input: CreateRequestInput): BlogRequest {
   const id = nanoid(12);
   db()
     .prepare(
-      `INSERT INTO blog_requests (id, label, topic, keywords_json, instructions, priority)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO blog_requests
+         (id, label, topic, keywords_json, instructions, tags_json, priority)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
@@ -62,10 +66,35 @@ export function createRequest(input: CreateRequestInput): BlogRequest {
       input.topic,
       JSON.stringify(input.keywords ?? []),
       input.instructions ?? "",
+      JSON.stringify(normalizeTags(input.tags ?? [])),
       input.priority ?? 0,
     );
   logEvent("request.create", input.label, { requestId: id });
   return getRequest(id)!;
+}
+
+/**
+ * Canonicalize tag strings: lowercase, trim, collapse internal whitespace
+ * to a single hyphen, drop empty entries, dedupe. So "AI", "ai ", and
+ * "  AI  " all become "ai"; "Predictive Maintenance" becomes
+ * "predictive-maintenance".
+ */
+export function normalizeTags(tags: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of tags) {
+    if (typeof raw !== "string") continue;
+    const clean = raw
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, "-")
+      .replace(/-{2,}/g, "-");
+    if (!clean) continue;
+    if (seen.has(clean)) continue;
+    seen.add(clean);
+    out.push(clean);
+  }
+  return out;
 }
 
 export function getRequest(id: string): BlogRequest | null {
@@ -100,6 +129,7 @@ export function updateRequest(
     topic: string;
     keywords: string[];
     instructions: string;
+    tags: string[];
     priority: number;
     status: RequestStatus;
     blog_id: string | null;
@@ -123,6 +153,10 @@ export function updateRequest(
   if (patch.instructions !== undefined) {
     fields.push("instructions = ?");
     values.push(patch.instructions);
+  }
+  if (patch.tags !== undefined) {
+    fields.push("tags_json = ?");
+    values.push(JSON.stringify(normalizeTags(patch.tags)));
   }
   if (patch.priority !== undefined) {
     fields.push("priority = ?");

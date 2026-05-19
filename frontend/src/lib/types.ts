@@ -1,3 +1,10 @@
+import {
+  DEFAULT_BODY_SYSTEM,
+  DEFAULT_BODY_USER,
+  DEFAULT_OUTLINE_SYSTEM,
+  DEFAULT_OUTLINE_USER,
+} from "./prompts";
+
 export type ResourceType = "pdf" | "docx" | "url" | "note" | "doc";
 
 export type ResourceStatus = "pending" | "processing" | "ready" | "error";
@@ -35,10 +42,28 @@ export interface BlogRequest {
   topic: string;
   keywords: string[];
   instructions: string;
+  /** Resource-pool tags selected for this request; pool resources whose
+   *  tags overlap with this set are auto-attached at generation time. */
+  tags: string[];
   priority: number;
   status: RequestStatus;
   blog_id: string | null;
   last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── resource pool ──────────────────────────────────────────────────────────
+
+export interface PoolResource {
+  id: string;
+  name: string;
+  type: ResourceType;
+  source: string;
+  content: string;
+  tags: string[];
+  status: ResourceStatus;
+  error: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -113,7 +138,7 @@ export type PublishMode = "auto" | "manual";
 
 export type Publisher = "markdown" | "webflow";
 
-export type ImageProvider = "placeholder" | "gemini";
+export type ImageProvider = "placeholder" | "gemini" | "pexels";
 
 export interface Settings {
   groq_api_key: string;
@@ -126,10 +151,16 @@ export interface Settings {
   publish_mode: PublishMode;
   publisher: Publisher;
   words_target: number;
+  // Customizable prompts. Empty = use the platform default.
+  outline_system_prompt: string;
+  outline_user_template: string;
+  body_system_prompt: string;
+  body_user_template: string;
   // Image generation
   image_provider: ImageProvider;
   gemini_api_key: string;
   gemini_image_model: string;
+  pexels_api_key: string;
   // Absolute base URL (e.g. https://autoblogtool.iocompute.ai). Used to turn
   // locally-saved banners into URLs that Webflow can fetch.
   public_base_url: string;
@@ -175,6 +206,10 @@ export const DEFAULT_SETTINGS: Settings = {
   publish_mode: "auto",
   publisher: "markdown",
   words_target: 1200,
+  outline_system_prompt: DEFAULT_OUTLINE_SYSTEM,
+  outline_user_template: DEFAULT_OUTLINE_USER,
+  body_system_prompt: DEFAULT_BODY_SYSTEM,
+  body_user_template: DEFAULT_BODY_USER,
   site_url: "",
   webflow_image_field: "main-image",
   webflow_thumbnail_field: "thumbnail-image",
@@ -190,6 +225,7 @@ export const DEFAULT_SETTINGS: Settings = {
   image_provider: "placeholder",
   gemini_api_key: "",
   gemini_image_model: "gemini-3.1-flash-image",
+  pexels_api_key: "",
   public_base_url: "",
   webflow_token: "",
   webflow_site_id: "",

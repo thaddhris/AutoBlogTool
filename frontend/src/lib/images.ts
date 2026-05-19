@@ -19,6 +19,9 @@ export interface GenerateBannerInput {
   title: string;
   description?: string;
   brand: string;
+  /** Optional. If present, used as the Pexels search query — cleaner results
+   *  than parsing the full title. Ignored by other providers. */
+  primary_keyword?: string | null;
 }
 
 function ensureBannersDir() {
@@ -151,6 +154,134 @@ async function geminiBanner(input: GenerateBannerInput): Promise<Banner> {
   };
 }
 
+// ─── pexels ─────────────────────────────────────────────────────────────────
+
+interface PexelsPhoto {
+  id: number;
+  width: number;
+  height: number;
+  url: string;
+  photographer: string;
+  photographer_url: string;
+  alt: string;
+  src: {
+    original: string;
+    large2x: string;
+    large: string;
+    medium: string;
+    landscape: string;
+  };
+}
+
+interface PexelsResponse {
+  photos: PexelsPhoto[];
+  total_results?: number;
+}
+
+const STOPWORDS = new Set([
+  "the",
+  "a",
+  "an",
+  "is",
+  "are",
+  "and",
+  "or",
+  "for",
+  "with",
+  "to",
+  "in",
+  "on",
+  "of",
+  "at",
+  "by",
+  "from",
+  "your",
+  "you",
+  "how",
+  "why",
+  "what",
+  "when",
+  "guide",
+  "complete",
+  "ultimate",
+]);
+
+/**
+ * Build a Pexels search query from the blog inputs. Prefers primary_keyword
+ * (cleanest); otherwise extracts up to 4 content-bearing words from the
+ * title. Fully specific titles like "Predictive Maintenance in Cement
+ * Plants" yield queries like "predictive maintenance cement plants" which
+ * Pexels handles well.
+ */
+function buildPexelsQuery(input: GenerateBannerInput): string {
+  if (input.primary_keyword && input.primary_keyword.trim()) {
+    return input.primary_keyword.trim();
+  }
+  const tokens = input.title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !STOPWORDS.has(w))
+    .slice(0, 4);
+  return tokens.join(" ") || "industry technology";
+}
+
+/**
+ * Search Pexels for a landscape stock photo matching the post topic,
+ * download the chosen image, save it to public/banners/, and return its
+ * site-relative URL. Picks one of the top 5 results at random so successive
+ * blogs on similar topics don't end up with identical hero images.
+ *
+ * Pexels license requires photographer attribution; we encode it into the
+ * alt text. If you want a visible credit on the post, render the photog
+ * name there too.
+ */
+async function pexelsBanner(input: GenerateBannerInput): Promise<Banner> {
+  const settings = getSettings();
+  const key = settings.pexels_api_key;
+  if (!key) throw new Error("Pexels API key not configured");
+
+  const query = buildPexelsQuery(input);
+  const searchUrl =
+    `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}` +
+    `&per_page=15&orientation=landscape&size=large`;
+
+  const searchRes = await fetch(searchUrl, {
+    headers: { Authorization: key },
+  });
+  if (!searchRes.ok) {
+    const txt = await searchRes.text();
+    throw new Error(`Pexels ${searchRes.status}: ${txt.slice(0, 200)}`);
+  }
+  const data = (await searchRes.json()) as PexelsResponse;
+  const photos = data.photos ?? [];
+  if (photos.length === 0) {
+    throw new Error(`Pexels returned no results for "${query}"`);
+  }
+
+  const pool = photos.slice(0, Math.min(5, photos.length));
+  const photo = pool[Math.floor(Math.random() * pool.length)];
+
+  // Prefer large2x (~2000px wide, sharp on retina); fall back through sizes.
+  const imageUrl = photo.src.large2x || photo.src.large || photo.src.original;
+  const imgRes = await fetch(imageUrl);
+  if (!imgRes.ok) {
+    throw new Error(`Pexels image download ${imgRes.status}`);
+  }
+  const buf = Buffer.from(await imgRes.arrayBuffer());
+
+  ensureBannersDir();
+  const id = `${Date.now().toString(36)}-${nanoid(8)}`;
+  const filename = `${id}.jpg`;
+  fs.writeFileSync(path.join(BANNERS_DIR, filename), buf);
+
+  const altBase = photo.alt?.trim() || input.title;
+  return {
+    url: `/banners/${filename}`,
+    alt: `${altBase} (Photo by ${photo.photographer} on Pexels)`,
+  };
+}
+
 // ─── public entrypoint ──────────────────────────────────────────────────────
 
 /**
@@ -168,7 +299,15 @@ export async function generateBanner(input: GenerateBannerInput): Promise<Banner
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logEvent("image.generate.fail", `gemini → fallback: ${msg}`);
-      // fall through to placeholder
+    }
+  }
+
+  if (provider === "pexels") {
+    try {
+      return await pexelsBanner(input);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logEvent("image.generate.fail", `pexels → fallback: ${msg}`);
     }
   }
 

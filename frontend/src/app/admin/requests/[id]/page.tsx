@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getRequest } from "@/lib/requests";
 import { listResources } from "@/lib/resources";
+import { listPoolResources } from "@/lib/pool";
 import { getBlogByRequest } from "@/lib/blogs";
 import { Card } from "@/components/ui";
 import { RequestStatusBadge, BlogStatusBadge } from "@/components/StatusBadge";
@@ -20,6 +21,11 @@ export default async function RequestDetailPage({
   if (!req) notFound();
   const resources = listResources(id);
   const blog = getBlogByRequest(id);
+  // Preview which pool resources will get attached at generation time
+  // based on this request's selected tags.
+  const matchedPool = req.tags.length
+    ? listPoolResources({ tags: req.tags, limit: 20 })
+    : [];
 
   return (
     <div className="p-8 space-y-6 max-w-5xl">
@@ -68,6 +74,25 @@ export default async function RequestDetailPage({
               </dd>
             </div>
             <div>
+              <dt className="text-xs text-zinc-500">Resource-pool tags</dt>
+              <dd className="text-zinc-800">
+                {req.tags.length ? (
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {req.tags.map((t) => (
+                      <span
+                        key={t}
+                        className="text-[11px] px-2 py-0.5 rounded-full bg-violet-100 text-violet-800"
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  "—"
+                )}
+              </dd>
+            </div>
+            <div>
               <dt className="text-xs text-zinc-500">Instructions</dt>
               <dd className="text-zinc-800 whitespace-pre-wrap">
                 {req.instructions || "—"}
@@ -102,6 +127,62 @@ export default async function RequestDetailPage({
       </div>
 
       <ResourcesPanel requestId={req.id} initialResources={resources} />
+
+      {req.tags.length > 0 && (
+        <Card>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs uppercase tracking-wide text-zinc-500">
+              Matched pool resources
+            </div>
+            <Link
+              href="/admin/pool"
+              className="text-xs text-zinc-500 hover:text-zinc-900 underline"
+            >
+              Open Resource Pool →
+            </Link>
+          </div>
+          {matchedPool.length === 0 ? (
+            <p className="text-xs text-zinc-400 italic">
+              No pool resources match the selected tags yet. Add resources
+              tagged with{" "}
+              {req.tags.map((t, i) => (
+                <span key={t}>
+                  <code className="font-mono">{t}</code>
+                  {i < req.tags.length - 1 ? ", " : ""}
+                </span>
+              ))}{" "}
+              from the Resource Pool page.
+            </p>
+          ) : (
+            <ul className="space-y-1.5">
+              {matchedPool.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex items-center justify-between text-sm"
+                >
+                  <span className="truncate font-medium">{r.name}</span>
+                  <span className="flex flex-wrap gap-1 ml-2">
+                    {r.tags
+                      .filter((t) => req.tags.includes(t))
+                      .map((t) => (
+                        <span
+                          key={t}
+                          className="text-[11px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-800"
+                        >
+                          {t}
+                        </span>
+                      ))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="text-[11px] text-zinc-500 mt-3">
+            These are retrieved alongside the directly-attached resources at
+            generation time, ranked by FTS5 relevance to the request topic.
+          </p>
+        </Card>
+      )}
     </div>
   );
 }

@@ -38,6 +38,14 @@ export async function PATCH(
           .map((s: string) => s.trim())
           .filter(Boolean);
   }
+  if (body.tags !== undefined) {
+    patch.tags = Array.isArray(body.tags)
+      ? body.tags.map(String)
+      : String(body.tags)
+          .split(/[,;\n]/)
+          .map((s: string) => s.trim())
+          .filter(Boolean);
+  }
   if (body.instructions !== undefined)
     patch.instructions = String(body.instructions);
   if (body.priority !== undefined && Number.isFinite(body.priority))

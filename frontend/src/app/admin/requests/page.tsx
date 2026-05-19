@@ -30,6 +30,7 @@ export default async function RequestsPage() {
               <th className="px-4 py-3 font-medium">Label</th>
               <th className="px-4 py-3 font-medium">Topic</th>
               <th className="px-4 py-3 font-medium">Keywords</th>
+              <th className="px-4 py-3 font-medium">Pool tags</th>
               <th className="px-4 py-3 font-medium">Priority</th>
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Created</th>
@@ -39,7 +40,7 @@ export default async function RequestsPage() {
             {requests.length === 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-4 py-12 text-center text-sm text-zinc-400"
                 >
                   No requests yet. Click <strong>New request</strong> or{" "}
@@ -66,6 +67,27 @@ export default async function RequestsPage() {
                 <td className="px-4 py-3 text-zinc-500 text-xs">
                   {r.keywords.slice(0, 3).join(", ")}
                   {r.keywords.length > 3 && ` +${r.keywords.length - 3}`}
+                </td>
+                <td className="px-4 py-3 text-xs">
+                  {r.tags.length === 0 ? (
+                    <span className="text-zinc-400">—</span>
+                  ) : (
+                    <span className="flex flex-wrap gap-1">
+                      {r.tags.slice(0, 3).map((t) => (
+                        <span
+                          key={t}
+                          className="px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-800"
+                        >
+                          {t}
+                        </span>
+                      ))}
+                      {r.tags.length > 3 && (
+                        <span className="text-zinc-500">
+                          +{r.tags.length - 3}
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-zinc-700">{r.priority}</td>
                 <td className="px-4 py-3">

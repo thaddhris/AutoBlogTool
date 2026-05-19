@@ -127,6 +127,64 @@ function migrate(d: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_blogs_status ON blogs(status);
     CREATE INDEX IF NOT EXISTS idx_blogs_scheduled_at ON blogs(scheduled_at);
 
+    -- Centralized resource pool. Resources here are reusable across many
+    -- blog requests via tag matching, complementing the per-request
+    -- resources table above.
+    CREATE TABLE IF NOT EXISTS pool_resources (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      source TEXT NOT NULL,
+      content TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS pool_resource_tags (
+      resource_id TEXT NOT NULL REFERENCES pool_resources(id) ON DELETE CASCADE,
+      tag TEXT NOT NULL,
+      PRIMARY KEY (resource_id, tag)
+    );
+    CREATE INDEX IF NOT EXISTS idx_pool_resource_tags_tag
+      ON pool_resource_tags(tag);
+
+    CREATE TABLE IF NOT EXISTS pool_chunks (
+      id TEXT PRIMARY KEY,
+      resource_id TEXT NOT NULL REFERENCES pool_resources(id) ON DELETE CASCADE,
+      content TEXT NOT NULL,
+      position INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pool_chunks_resource
+      ON pool_chunks(resource_id);
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS pool_chunks_fts USING fts5(
+      content,
+      resource_id UNINDEXED,
+      content='pool_chunks',
+      content_rowid='rowid',
+      tokenize='porter unicode61'
+    );
+
+    CREATE TRIGGER IF NOT EXISTS pool_chunks_ai
+      AFTER INSERT ON pool_chunks BEGIN
+      INSERT INTO pool_chunks_fts(rowid, content, resource_id)
+        VALUES (new.rowid, new.content, new.resource_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS pool_chunks_ad
+      AFTER DELETE ON pool_chunks BEGIN
+      INSERT INTO pool_chunks_fts(pool_chunks_fts, rowid, content, resource_id)
+        VALUES('delete', old.rowid, old.content, old.resource_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS pool_chunks_au
+      AFTER UPDATE ON pool_chunks BEGIN
+      INSERT INTO pool_chunks_fts(pool_chunks_fts, rowid, content, resource_id)
+        VALUES('delete', old.rowid, old.content, old.resource_id);
+      INSERT INTO pool_chunks_fts(rowid, content, resource_id)
+        VALUES (new.rowid, new.content, new.resource_id);
+    END;
+
     CREATE TABLE IF NOT EXISTS run_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       request_id TEXT,
@@ -160,6 +218,10 @@ function migrate(d: Database.Database) {
   addColumn(d, "blogs", "sources_json", "TEXT NOT NULL DEFAULT '[]'");
   addColumn(d, "blogs", "internal_links_resolved", "INTEGER NOT NULL DEFAULT 0");
   addColumn(d, "blogs", "word_count", "INTEGER");
+
+  // Tag set selected at request-creation time. Pool resources whose tags
+  // overlap with this set are auto-attached at generation time.
+  addColumn(d, "blog_requests", "tags_json", "TEXT NOT NULL DEFAULT '[]'");
 }
 
 export function logEvent(

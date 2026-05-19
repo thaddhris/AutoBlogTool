@@ -2,6 +2,9 @@ import { nanoid } from "nanoid";
 import { db, logEvent } from "./db";
 import { ResourceType } from "./types";
 
+// Module-scoped guard so we set pdfjs's worker URL exactly once per process.
+let pdfWorkerSet = false;
+
 function chunkText(text: string, target = 900, overlap = 100): string[] {
   const clean = text.replace(/\r\n/g, "\n").replace(/\s{3,}/g, "\n\n").trim();
   if (!clean) return [];
@@ -24,14 +27,37 @@ function chunkText(text: string, target = 900, overlap = 100): string[] {
 async function extractFromBuffer(
   buffer: Buffer,
   type: ResourceType,
-  name: string,
+  _name: string,
 ): Promise<string> {
   if (type === "pdf") {
-    const mod = await import("pdf-parse");
-    const pdf = (mod as { default?: (b: Buffer) => Promise<{ text: string }> }).default
-      ?? (mod as unknown as (b: Buffer) => Promise<{ text: string }>);
-    const out = await pdf(buffer);
-    return out.text ?? "";
+    // pdf-parse v2 ships a class-based API on top of pdfjs-dist. pdfjs needs
+    // its worker module URL set explicitly — by default it tries to resolve
+    // a bundler-managed path that Next/Turbopack doesn't expose at runtime,
+    // so we point it at the worker file shipped inside the pdf-parse package
+    // itself. Setting it once is fine; pdfjs caches the value globally.
+    const { PDFParse } = await import("pdf-parse");
+    if (!pdfWorkerSet) {
+      const path = await import("node:path");
+      const { pathToFileURL } = await import("node:url");
+      const workerPath = path.join(
+        process.cwd(),
+        "node_modules",
+        "pdf-parse",
+        "dist",
+        "pdf-parse",
+        "esm",
+        "pdf.worker.mjs",
+      );
+      PDFParse.setWorker(pathToFileURL(workerPath).href);
+      pdfWorkerSet = true;
+    }
+    const parser = new PDFParse({ data: new Uint8Array(buffer) });
+    try {
+      const out = await parser.getText();
+      return out.text ?? "";
+    } finally {
+      await parser.destroy().catch(() => {});
+    }
   }
   if (type === "docx" || type === "doc") {
     const mammoth = await import("mammoth");
@@ -121,6 +147,95 @@ export async function ingestResource(input: IngestInput): Promise<string> {
     logEvent("resource.ingest.fail", `${input.name}: ${msg}`, {
       requestId: input.request_id,
     });
+    throw err;
+  }
+}
+
+// ─── Pool-scoped variant ────────────────────────────────────────────────────
+
+import { setTags } from "./pool";
+import { normalizeTags } from "./requests";
+
+export interface IngestPoolInput {
+  name: string;
+  type: ResourceType;
+  source: string;
+  tags?: string[];
+  buffer?: Buffer; // for pdf/docx
+  text?: string; // for notes
+}
+
+/**
+ * Same extraction/chunking pipeline as `ingestResource`, but writes into the
+ * centralized pool tables. Pool resources are reusable across requests via
+ * tag matching, not tied to any single request.
+ */
+export async function ingestPoolResource(
+  input: IngestPoolInput,
+): Promise<string> {
+  const id = nanoid(12);
+  const cleanTags = normalizeTags(input.tags ?? []);
+  db()
+    .prepare(
+      `INSERT INTO pool_resources (id, name, type, source, status)
+       VALUES (?, ?, ?, ?, 'processing')`,
+    )
+    .run(id, input.name, input.type, input.source);
+  if (cleanTags.length) setTags(id, cleanTags);
+  logEvent("pool.resource.ingest.start", input.name, {
+    payload: { tags: cleanTags },
+  });
+
+  try {
+    let text = "";
+    if (input.type === "url") {
+      text = await extractFromUrl(input.source);
+    } else if (input.type === "note") {
+      text = input.text ?? "";
+    } else if (input.buffer) {
+      text = await extractFromBuffer(input.buffer, input.type, input.name);
+    } else if (input.text) {
+      text = input.text;
+    }
+
+    if (!text.trim()) throw new Error("Resource contained no extractable text");
+
+    const chunks = chunkText(text);
+    const insertChunk = db().prepare(
+      `INSERT INTO pool_chunks (id, resource_id, content, position)
+       VALUES (?, ?, ?, ?)`,
+    );
+    const tx = db().transaction(() => {
+      for (let i = 0; i < chunks.length; i++) {
+        insertChunk.run(nanoid(12), id, chunks[i], i);
+      }
+      db()
+        .prepare(
+          `UPDATE pool_resources
+           SET content = ?, status = 'ready', error = NULL,
+               updated_at = datetime('now')
+           WHERE id = ?`,
+        )
+        .run(text, id);
+    });
+    tx();
+
+    logEvent(
+      "pool.resource.ingest.ok",
+      `${input.name} (${chunks.length} chunks)`,
+      { payload: { id, tags: cleanTags } },
+    );
+    return id;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    db()
+      .prepare(
+        `UPDATE pool_resources
+         SET status = 'error', error = ?, updated_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .run(msg, id);
+    logEvent("pool.resource.ingest.fail", `${input.name}: ${msg}`);
     throw err;
   }
 }

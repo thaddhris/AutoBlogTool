@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db, logEvent } from "./db";
 import { getSettings } from "./settings";
 import { llmJsonValidated, llmText } from "./ai";
-import { retrieve, requestCorpusSnippet } from "./rag";
+import { retrieve, requestCorpusSnippet, retrieveFromPool } from "./rag";
 import { keywordSlug, jsonLdObjects } from "./seo";
 import { generateBanner } from "./images";
 import { getRequest, updateRequest } from "./requests";
@@ -11,6 +11,29 @@ import { getBlog, getBlogByRequest, updateBlog } from "./blogs";
 import { resolveInternalLinks } from "./internalLinks";
 import { runQualityChecks } from "./quality";
 import { Blog } from "./types";
+import {
+  DEFAULT_BODY_SYSTEM,
+  DEFAULT_BODY_USER,
+  DEFAULT_OUTLINE_SYSTEM,
+  DEFAULT_OUTLINE_USER,
+  OUTLINE_JSON_SCHEMA_BLOCK,
+} from "./prompts";
+
+/**
+ * Tiny template engine — expands `{{name}}` against a vars map. Unknown
+ * placeholders are left literal so typos surface in the model output rather
+ * than being silently dropped.
+ */
+function renderTemplate(
+  template: string,
+  vars: Record<string, string>,
+): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, name) =>
+    Object.prototype.hasOwnProperty.call(vars, name)
+      ? vars[name]
+      : `{{${name}}}`,
+  );
+}
 
 // ─── Outline JSON contract ───────────────────────────────────────────────────
 //
@@ -67,22 +90,9 @@ const OutlineSchema = z.object({
 
 type Outline = z.infer<typeof OutlineSchema>;
 
-const OUTLINE_SYSTEM = `You are an SEO content strategist for an industrial AI / IIoT platform.
-Given a topic brief and source snippets you produce blog post metadata and a section outline.
-You strictly obey character limits — they are hard requirements, not suggestions.
-Always respond with valid JSON exactly matching the requested schema. No prose, no preface.`;
-
-const BODY_SYSTEM = `You are a senior B2B content writer for an industrial AI / IIoT platform.
-You write SEO-optimized blog posts that read like a thoughtful human expert wrote them — concrete, useful, never robotic.
-Hard rules:
-- Use the supplied source snippets faithfully. Do not invent specific stats, customer names, or product features that aren't in the snippets, brand context, or topic brief.
-- Output ONLY Markdown. No JSON, no preamble, no closing remarks.
-- The platform renders the H1 separately from the "h1" field — do NOT include an H1 in the body.
-- Use H2 (##) for the section headings provided, H3 (###) for sub-points.
-- Keep paragraphs short (2–4 sentences).
-- Insert at least one bullet list AND one table.
-- Where a related concept could link to another post on the site, drop a placeholder of the form [[related: short keyword or topic]]. Aim for 2–3 placeholders, never more than 5.
-- End with a "## Key takeaways" bullet list (3–5 items) then a short, clear call-to-action paragraph.`;
+// System messages now come from settings — see DEFAULT_OUTLINE_SYSTEM /
+// DEFAULT_BODY_SYSTEM in prompts.ts for the platform defaults. Empty values
+// fall back to those defaults at call time.
 
 async function uniqueSlug(base: string): Promise<string> {
   const slugify = (s: string) =>
@@ -115,65 +125,73 @@ export async function generateBlogForRequest(requestId: string): Promise<Blog> {
   logEvent("request.generate.start", req.label, { requestId });
 
   const retrievalQuery = [req.topic, req.keywords.join(" ")].join(" ").trim();
+  // Per-request resources first — the admin attached them explicitly so they
+  // should anchor the writing.
   const top = retrieve(requestId, retrievalQuery, 10);
-  const fallback = top.length === 0 ? requestCorpusSnippet(requestId, 5000) : "";
+  // Pool resources second — looked up by tag overlap. Skipped if the request
+  // has no tags.
+  const poolHits = retrieveFromPool(retrievalQuery, req.tags ?? [], 6);
+  const fallback =
+    top.length === 0 && poolHits.length === 0
+      ? requestCorpusSnippet(requestId, 5000)
+      : "";
+
+  const sourceParts: string[] = [];
+  if (top.length > 0) {
+    sourceParts.push(
+      top
+        .map((c, i) => `Snippet ${i + 1} (attached):\n${c.content}`)
+        .join("\n\n"),
+    );
+  }
+  if (poolHits.length > 0) {
+    sourceParts.push(
+      poolHits
+        .map(
+          (c, i) =>
+            `Pool snippet ${i + 1} (from "${c.resource_name}", tags: ${c.tags.join(", ")}):\n${c.content}`,
+        )
+        .join("\n\n"),
+    );
+  }
+  if (sourceParts.length === 0 && fallback) {
+    sourceParts.push(`Resource excerpts:\n${fallback}`);
+  }
   const sourceBlock =
-    top.length > 0
-      ? top.map((c, i) => `Snippet ${i + 1}:\n${c.content}`).join("\n\n")
-      : fallback
-        ? `Resource excerpts:\n${fallback}`
-        : "No supporting resources provided.";
+    sourceParts.join("\n\n---\n\n") || "No supporting resources provided.";
 
-  const briefBlock = `Brand: ${settings.brand_name}
-Brand voice: ${settings.brand_tone}
-
-## Blog request
-Label: ${req.label}
-Topic / context: ${req.topic}
-${req.keywords.length ? `Target keywords (use the most relevant as primary_keyword): ${req.keywords.join(", ")}` : ""}
-${req.instructions ? `Additional instructions: ${req.instructions}` : ""}
-
-## Source material
-${sourceBlock}`;
+  if (poolHits.length > 0) {
+    logEvent(
+      "pool.retrieve",
+      `request=${requestId} tags=${(req.tags ?? []).join(",")} hits=${poolHits.length}`,
+      { requestId },
+    );
+  }
 
   // ── Step 1: outline + metadata with Zod validation + 2 retries ──
-  const outlinePrompt = `${briefBlock}
+  const baseVars: Record<string, string> = {
+    brand_name: settings.brand_name,
+    brand_tone: settings.brand_tone,
+    label: req.label,
+    topic: req.topic,
+    keywords_block: req.keywords.length
+      ? `Target keywords (use the most relevant as primary_keyword): ${req.keywords.join(", ")}\n`
+      : "",
+    instructions_block: req.instructions
+      ? `Additional instructions: ${req.instructions}\n`
+      : "",
+    source_block: sourceBlock,
+    json_schema: OUTLINE_JSON_SCHEMA_BLOCK,
+  };
 
-Produce blog post metadata and a section outline as JSON. Hard requirements:
-- "title_tag": SEO title, **20–60 chars**, primary keyword near the start.
-- "meta_description": **120–165 chars** (target 150–160), action-oriented, includes the primary keyword.
-- "h1": on-page headline, may differ from title_tag, **10–120 chars**.
-- "slug_seed" (optional): kebab-case, 3–5 words, keyword-led, e.g. "oee-basics-plant-managers".
-- "primary_keyword": single string, the head keyword.
-- "secondary_keywords": **3–6** related/LSI keywords, no overlap with primary.
-- "tldr": 2–3 sentence answer to the search intent, **80–500 chars**.
-- "excerpt": 1–2 sentence hook for listing pages, **40–280 chars**.
-- "tags": **2–5** short tags.
-- "outline": **4–8** sections. Each has "heading" and **2–6** "bullets".
-- "faq": **3–5** real-user questions with answers (20–700 chars each).
-- "sources": up to 10 URLs cited in the post (empty array if none).
-
-Respond with JSON of shape:
-{
-  "title_tag": string,
-  "meta_description": string,
-  "h1": string,
-  "slug_seed": string,
-  "primary_keyword": string,
-  "secondary_keywords": string[],
-  "tldr": string,
-  "excerpt": string,
-  "tags": string[],
-  "outline": [{ "heading": string, "bullets": string[] }],
-  "faq": [{ "q": string, "a": string }],
-  "sources": string[]
-}
-No prose outside JSON.`;
+  const outlineTemplate =
+    settings.outline_user_template?.trim() || DEFAULT_OUTLINE_USER;
+  const outlinePrompt = renderTemplate(outlineTemplate, baseVars);
 
   let outline: Outline;
   try {
     outline = await llmJsonValidated<Outline>({
-      system: OUTLINE_SYSTEM,
+      system: settings.outline_system_prompt?.trim() || DEFAULT_OUTLINE_SYSTEM,
       prompt: outlinePrompt,
       maxTokens: 3000,
       validate: (raw) => OutlineSchema.parse(raw),
@@ -193,33 +211,25 @@ No prose outside JSON.`;
         `${i + 1}. ${s.heading}\n${s.bullets.map((b) => `   - ${b}`).join("\n")}`,
     )
     .join("\n");
-  const bodyPrompt = `${briefBlock}
-
-## Approved h1
-${outline.h1}
-
-## Approved outline (follow this; each numbered item is an H2 section)
-${outlineForBody}
-
-## TL;DR to include verbatim at the very top under a "## TL;DR" heading
-${outline.tldr}
-
-## Target length
-Approximately ${settings.words_target} words total.
-
-Now write the full blog post body in Markdown.
-- Start with a "## TL;DR" block using the text above, then a 1–2 paragraph intro.
-- Follow the outline order. Each numbered item becomes an H2 (##). Use H3 (###) for sub-points if needed.
-- Include AT LEAST one bullet list AND one markdown table somewhere in the body.
-- Include 2–3 internal-link placeholders shaped like [[related: short topic or keyword]] — these will be resolved automatically by the platform.
-- End with a "## Key takeaways" bullet list (3–5 items) and a final CTA paragraph.
-- Do NOT include the title as an H1.
-- Do NOT include any text outside the markdown body (no JSON, no prefaces).`;
+  const bodyVars: Record<string, string> = {
+    ...baseVars,
+    h1: outline.h1,
+    title_tag: outline.title_tag,
+    meta_description: outline.meta_description,
+    primary_keyword: outline.primary_keyword,
+    secondary_keywords: outline.secondary_keywords.join(", "),
+    tldr: outline.tldr,
+    outline: outlineForBody,
+    words_target: String(settings.words_target),
+  };
+  const bodyTemplate =
+    settings.body_user_template?.trim() || DEFAULT_BODY_USER;
+  const bodyPrompt = renderTemplate(bodyTemplate, bodyVars);
 
   let body: string;
   try {
     body = await llmText({
-      system: BODY_SYSTEM,
+      system: settings.body_system_prompt?.trim() || DEFAULT_BODY_SYSTEM,
       prompt: bodyPrompt,
       maxTokens: 6000,
     });
@@ -253,6 +263,7 @@ Now write the full blog post body in Markdown.
     title: outline.h1,
     description: outline.meta_description,
     brand: settings.brand_name,
+    primary_keyword: outline.primary_keyword,
   });
 
   // ── Step 5: persist initial draft so quality checks can reference its id ──

@@ -23,18 +23,20 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  const keywords = Array.isArray(body.keywords)
-    ? body.keywords.map(String)
-    : typeof body.keywords === "string"
-      ? body.keywords
-          .split(/[,;\n]/)
-          .map((s: string) => s.trim())
-          .filter(Boolean)
-      : [];
+  const parseList = (v: unknown): string[] =>
+    Array.isArray(v)
+      ? v.map(String)
+      : typeof v === "string"
+        ? v
+            .split(/[,;\n]/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
   const created = createRequest({
     label,
     topic,
-    keywords,
+    keywords: parseList(body.keywords),
+    tags: parseList(body.tags),
     instructions: String(body.instructions ?? "").trim(),
     priority: Number.isFinite(body.priority) ? body.priority : 0,
   });

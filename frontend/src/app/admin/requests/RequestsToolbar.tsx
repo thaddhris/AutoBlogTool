@@ -72,6 +72,7 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
       label: form.get("label"),
       topic: form.get("topic"),
       keywords: form.get("keywords"),
+      tags: form.get("tags"),
       instructions: form.get("instructions"),
       priority: Number(form.get("priority") || 0),
     };
@@ -115,6 +116,17 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
               name="keywords"
               placeholder="predictive maintenance, IIoT, cement"
             />
+          </div>
+          <div>
+            <Label>Resource-pool tags (comma separated)</Label>
+            <Input
+              name="tags"
+              placeholder="ai, iot, predictive-maintenance"
+            />
+            <p className="text-[11px] text-zinc-500 mt-1">
+              Pool resources tagged with any of these will auto-attach at
+              generation time. See the Resource Pool page for available tags.
+            </p>
           </div>
           <div>
             <Label>Instructions / notes</Label>

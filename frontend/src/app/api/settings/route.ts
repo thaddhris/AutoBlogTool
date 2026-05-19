@@ -6,12 +6,14 @@ type MaskedSettings = Settings & {
   has_groq_key: boolean;
   has_webflow_token: boolean;
   has_gemini_key: boolean;
+  has_pexels_key: boolean;
 };
 
 const SECRET_KEYS: (keyof Settings)[] = [
   "groq_api_key",
   "webflow_token",
   "gemini_api_key",
+  "pexels_api_key",
 ];
 
 function maskValue(v: string): string {
@@ -24,9 +26,11 @@ function mask(s: Settings): MaskedSettings {
     groq_api_key: maskValue(s.groq_api_key),
     webflow_token: maskValue(s.webflow_token),
     gemini_api_key: maskValue(s.gemini_api_key),
+    pexels_api_key: maskValue(s.pexels_api_key),
     has_groq_key: Boolean(s.groq_api_key),
     has_webflow_token: Boolean(s.webflow_token),
     has_gemini_key: Boolean(s.gemini_api_key),
+    has_pexels_key: Boolean(s.pexels_api_key),
   };
 }
 
@@ -47,9 +51,14 @@ export async function PUT(request: NextRequest) {
     "publish_mode",
     "publisher",
     "words_target",
+    "outline_system_prompt",
+    "outline_user_template",
+    "body_system_prompt",
+    "body_user_template",
     "image_provider",
     "gemini_api_key",
     "gemini_image_model",
+    "pexels_api_key",
     "public_base_url",
     "site_url",
     "webflow_token",

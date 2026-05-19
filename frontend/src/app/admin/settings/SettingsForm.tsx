@@ -11,22 +11,55 @@ import {
   Textarea,
 } from "@/components/ui";
 import { Settings } from "@/lib/types";
+import {
+  BODY_PLACEHOLDERS,
+  DEFAULT_BODY_SYSTEM,
+  DEFAULT_BODY_USER,
+  DEFAULT_OUTLINE_SYSTEM,
+  DEFAULT_OUTLINE_USER,
+  OUTLINE_PLACEHOLDERS,
+  type PlaceholderDoc,
+} from "@/lib/prompts";
+import {
+  Sparkles,
+  Activity,
+  PenTool,
+  FileText,
+  Send,
+  Wrench,
+  Pencil,
+  Check,
+} from "lucide-react";
+
+type TabId = "ai" | "queue" | "brand" | "prompts" | "webflow" | "maintenance";
+
+const TABS: { id: TabId; label: string; icon: typeof Sparkles }[] = [
+  { id: "ai", label: "AI & images", icon: Sparkles },
+  { id: "queue", label: "Queue & cron", icon: Activity },
+  { id: "brand", label: "Brand voice", icon: PenTool },
+  { id: "prompts", label: "Prompts", icon: FileText },
+  { id: "webflow", label: "Webflow", icon: Send },
+  { id: "maintenance", label: "Maintenance", icon: Wrench },
+];
 
 export default function SettingsForm({
   initial,
   hasGroqKey,
   hasWebflowToken,
   hasGeminiKey,
+  hasPexelsKey,
 }: {
   initial: Settings;
   hasGroqKey: boolean;
   hasWebflowToken: boolean;
   hasGeminiKey: boolean;
+  hasPexelsKey: boolean;
 }) {
   const router = useRouter();
   const [form, setForm] = useState<Settings>(initial);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabId>("ai");
 
   function update<K extends keyof Settings>(k: K, v: Settings[K]) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -43,6 +76,7 @@ export default function SettingsForm({
         "groq_api_key",
         "webflow_token",
         "gemini_api_key",
+        "pexels_api_key",
       ] as const) {
         const v = payload[k];
         if (typeof v === "string" && v.startsWith("•")) {
@@ -68,7 +102,33 @@ export default function SettingsForm({
   }
 
   return (
-    <form onSubmit={save} className="space-y-4">
+    <form onSubmit={save} className="flex gap-6">
+      <aside className="w-52 shrink-0">
+        <nav className="space-y-0.5 sticky top-6">
+          {TABS.map((t) => {
+            const active = t.id === activeTab;
+            const Icon = t.icon;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setActiveTab(t.id)}
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors text-left ${
+                  active
+                    ? "bg-zinc-900 text-white"
+                    : "text-zinc-700 hover:bg-zinc-100"
+                }`}
+              >
+                <Icon size={14} />
+                {t.label}
+              </button>
+            );
+          })}
+        </nav>
+      </aside>
+
+      <div className="flex-1 min-w-0 space-y-4">
+      {activeTab === "ai" && (
       <Card>
         <div className="text-xs uppercase tracking-wide text-zinc-500 mb-3">
           AI provider
@@ -97,7 +157,9 @@ export default function SettingsForm({
           </div>
         </div>
       </Card>
+      )}
 
+      {activeTab === "queue" && (
       <Card>
         <div className="text-xs uppercase tracking-wide text-zinc-500 mb-3">
           Queue & publishing
@@ -174,7 +236,9 @@ export default function SettingsForm({
           />
         </div>
       </Card>
+      )}
 
+      {activeTab === "ai" && (
       <Card>
         <div className="flex items-center justify-between mb-3">
           <div className="text-xs uppercase tracking-wide text-zinc-500">
@@ -191,7 +255,8 @@ export default function SettingsForm({
             className="max-w-[220px]"
           >
             <option value="placeholder">placeholder (SVG)</option>
-            <option value="gemini">Gemini image model</option>
+            <option value="gemini">Gemini (AI generation, paid)</option>
+            <option value="pexels">Pexels (stock photos, free)</option>
           </Select>
         </div>
         {form.image_provider === "placeholder" && (
@@ -227,26 +292,52 @@ export default function SettingsForm({
                 placeholder="gemini-3.1-flash-image"
               />
             </div>
+          </div>
+        )}
+        {form.image_provider === "pexels" && (
+          <div className="space-y-3">
             <div>
-              <Label>Public base URL</Label>
+              <Label required>Pexels API key</Label>
               <Input
-                value={form.public_base_url}
+                value={form.pexels_api_key}
                 onChange={(e) =>
-                  update("public_base_url", e.target.value)
+                  update("pexels_api_key", e.target.value)
                 }
-                placeholder="https://autoblogtool.iocompute.ai"
+                placeholder={
+                  hasPexelsKey ? "(set — re-enter to change)" : "Your Pexels API key"
+                }
               />
               <p className="text-[11px] text-zinc-500 mt-1">
-                Banners are saved under <code>public/banners/</code> and
-                served at <code>/banners/&lt;id&gt;.png</code>. Webflow needs
-                an absolute URL — this prefix is prepended at publish time.
-                Leave blank to skip image upload to Webflow.
+                Free at <code>pexels.com/api</code>. 200 req/hr, 20k/month.
+                Returns curated landscape stock photos for the post topic —
+                no AI generation, no billing. Photographer credit goes in alt
+                text automatically.
               </p>
             </div>
           </div>
         )}
+        {form.image_provider !== "placeholder" && (
+          <div className="mt-4">
+            <Label>Public base URL</Label>
+            <Input
+              value={form.public_base_url}
+              onChange={(e) => update("public_base_url", e.target.value)}
+              placeholder="https://autoblogtool.iocompute.ai"
+            />
+            <p className="text-[11px] text-zinc-500 mt-1">
+              Banners are saved under <code>public/banners/</code> and served
+              at <code>/banners/&lt;id&gt;.&lt;ext&gt;</code>. Webflow needs
+              an absolute URL — this prefix is prepended at publish time.
+              Leave blank to skip image upload to Webflow.
+            </p>
+          </div>
+        )}
       </Card>
 
+      )}
+
+      {activeTab === "webflow" && (
+      <>
       <Card>
         <div className="flex items-center justify-between mb-3">
           <div className="text-xs uppercase tracking-wide text-zinc-500">
@@ -483,14 +574,19 @@ export default function SettingsForm({
           </div>
         </div>
       </Card>
+      </>
+      )}
 
+      {activeTab === "maintenance" && (
       <Card>
         <div className="text-xs uppercase tracking-wide text-zinc-500 mb-3">
           Backfill existing posts
         </div>
         <BackfillCard cronSecret={form.cron_secret} />
       </Card>
+      )}
 
+      {activeTab === "brand" && (
       <Card>
         <div className="text-xs uppercase tracking-wide text-zinc-500 mb-3">
           Brand voice
@@ -523,8 +619,65 @@ export default function SettingsForm({
           </div>
         </div>
       </Card>
+      )}
 
-      <div className="flex items-center justify-end gap-3">
+      {activeTab === "prompts" && (
+      <Card>
+        <div className="text-xs uppercase tracking-wide text-zinc-500 mb-3">
+          Generation prompts
+        </div>
+        <p className="text-[11px] text-zinc-500 mb-3">
+          Full control over both the system messages and the user-message
+          templates sent to Groq. Use{" "}
+          <code>{"{{placeholder}}"}</code> syntax for dynamic values — see
+          the &ldquo;Available placeholders&rdquo; sections below each
+          template. Unknown placeholders are left literal. Empty = use the
+          platform default.
+        </p>
+
+        <div className="space-y-6">
+          <PromptBlock
+            title="Outline call — system message"
+            description="Drives metadata + section outline. Output is JSON-validated; tell the model to respond with strict JSON."
+            value={form.outline_system_prompt}
+            onChange={(v) => update("outline_system_prompt", v)}
+            onReset={() => update("outline_system_prompt", DEFAULT_OUTLINE_SYSTEM)}
+            rows={6}
+          />
+
+          <PromptBlock
+            title="Outline call — user message template"
+            description='Sent right after the system message. Use {{json_schema}} to inject the locked schema description.'
+            value={form.outline_user_template}
+            onChange={(v) => update("outline_user_template", v)}
+            onReset={() => update("outline_user_template", DEFAULT_OUTLINE_USER)}
+            rows={14}
+            placeholders={OUTLINE_PLACEHOLDERS}
+          />
+
+          <PromptBlock
+            title="Body call — system message"
+            description='Long-form writer role. Keep "output ONLY markdown" or you get unparseable output.'
+            value={form.body_system_prompt}
+            onChange={(v) => update("body_system_prompt", v)}
+            onReset={() => update("body_system_prompt", DEFAULT_BODY_SYSTEM)}
+            rows={10}
+          />
+
+          <PromptBlock
+            title="Body call — user message template"
+            description="Sent right after the system message. Has access to all outline-derived placeholders (h1, tldr, outline, etc.)."
+            value={form.body_user_template}
+            onChange={(v) => update("body_user_template", v)}
+            onReset={() => update("body_user_template", DEFAULT_BODY_USER)}
+            rows={18}
+            placeholders={BODY_PLACEHOLDERS}
+          />
+        </div>
+      </Card>
+      )}
+
+      <div className="sticky bottom-0 -mx-1 mt-4 px-4 py-3 bg-zinc-50/95 backdrop-blur border-t border-zinc-200 flex items-center justify-end gap-3 z-10">
         {savedAt && (
           <div className="text-xs text-green-700">Saved at {savedAt}</div>
         )}
@@ -532,7 +685,130 @@ export default function SettingsForm({
           {saving ? "Saving…" : "Save settings"}
         </Button>
       </div>
+      </div>
     </form>
+  );
+}
+
+function PromptBlock({
+  title,
+  description,
+  value,
+  onChange,
+  onReset,
+  rows,
+  placeholders,
+}: {
+  title: string;
+  description: string;
+  value: string;
+  onChange: (v: string) => void;
+  onReset: () => void;
+  rows: number;
+  placeholders?: PlaceholderDoc[];
+}) {
+  // Local edit-mode toggle so users don't accidentally type into a large
+  // prompt textarea. Save still happens via the global Save button —
+  // "Done editing" here only switches back to the read-only preview.
+  const [editing, setEditing] = useState(false);
+  const displayValue = value || "(empty — pipeline uses the platform default)";
+
+  return (
+    <div className="border border-zinc-200 rounded-md p-3">
+      <div className="flex items-center justify-between mb-1 gap-2">
+        <Label>{title}</Label>
+        <div className="flex items-center gap-2">
+          {editing ? (
+            <>
+              <button
+                type="button"
+                onClick={onReset}
+                className="text-[11px] text-zinc-500 hover:text-zinc-900 underline"
+              >
+                Reset to default
+              </button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => setEditing(false)}
+              >
+                <Check size={14} /> Done editing
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setEditing(true)}
+            >
+              <Pencil size={14} /> Edit
+            </Button>
+          )}
+        </div>
+      </div>
+      {editing ? (
+        <Textarea
+          rows={rows}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="font-mono text-xs leading-relaxed"
+          placeholder="Empty = use platform default."
+          autoFocus
+        />
+      ) : (
+        <pre
+          className={`font-mono text-xs leading-relaxed whitespace-pre-wrap rounded-md border border-zinc-100 bg-zinc-50/50 p-3 max-h-64 overflow-y-auto ${
+            value ? "text-zinc-800" : "text-zinc-400 italic"
+          }`}
+        >
+          {displayValue}
+        </pre>
+      )}
+      <div className="flex items-center justify-between mt-1">
+        <p className="text-[11px] text-zinc-500">{description}</p>
+        <span className="text-[11px] text-zinc-400 font-mono">
+          {value.length} chars
+        </span>
+      </div>
+      {editing && (
+        <p className="text-[11px] text-amber-700 mt-1">
+          Click <strong>Done editing</strong> to lock the field, then{" "}
+          <strong>Save settings</strong> at the bottom to persist.
+        </p>
+      )}
+      {placeholders && placeholders.length > 0 && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-[11px] text-zinc-600 hover:text-zinc-900">
+            Available placeholders ({placeholders.length})
+          </summary>
+          <div className="mt-2 rounded-md bg-zinc-50 border border-zinc-200 p-2">
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="text-left text-zinc-500">
+                  <th className="font-medium pb-1 pr-2 w-[160px]">
+                    Placeholder
+                  </th>
+                  <th className="font-medium pb-1">What it expands to</th>
+                </tr>
+              </thead>
+              <tbody className="align-top">
+                {placeholders.map((p) => (
+                  <tr key={p.name} className="border-t border-zinc-100">
+                    <td className="py-1 pr-2 font-mono text-zinc-800">{`{{${p.name}}}`}</td>
+                    <td className="py-1 text-zinc-600">
+                      <div>{p.description}</div>
+                      <div className="text-zinc-400 mt-0.5 font-mono">
+                        e.g. {p.example}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
+    </div>
   );
 }
 
