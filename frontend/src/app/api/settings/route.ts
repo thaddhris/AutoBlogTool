@@ -9,6 +9,7 @@ type MaskedSettings = Settings & {
   has_pexels_key: boolean;
   has_fal_key: boolean;
   has_fluxapi_key: boolean;
+  has_openai_key: boolean;
 };
 
 const SECRET_KEYS: (keyof Settings)[] = [
@@ -18,6 +19,7 @@ const SECRET_KEYS: (keyof Settings)[] = [
   "pexels_api_key",
   "fal_api_key",
   "fluxapi_api_key",
+  "openai_api_key",
 ];
 
 function maskValue(v: string): string {
@@ -33,12 +35,14 @@ function mask(s: Settings): MaskedSettings {
     pexels_api_key: maskValue(s.pexels_api_key),
     fal_api_key: maskValue(s.fal_api_key),
     fluxapi_api_key: maskValue(s.fluxapi_api_key),
+    openai_api_key: maskValue(s.openai_api_key),
     has_groq_key: Boolean(s.groq_api_key),
     has_webflow_token: Boolean(s.webflow_token),
     has_gemini_key: Boolean(s.gemini_api_key),
     has_pexels_key: Boolean(s.pexels_api_key),
     has_fal_key: Boolean(s.fal_api_key),
     has_fluxapi_key: Boolean(s.fluxapi_api_key),
+    has_openai_key: Boolean(s.openai_api_key),
   };
 }
 
@@ -73,6 +77,9 @@ export async function PUT(request: NextRequest) {
     "fal_image_model",
     "fluxapi_api_key",
     "fluxapi_image_model",
+    "openai_api_key",
+    "openai_image_model",
+    "banner_title_overlay",
     "inline_images_max",
     "public_base_url",
     "site_url",

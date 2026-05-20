@@ -97,23 +97,28 @@ async function geminiCall(
   // Gemini lacks a "system" role — fold the system instruction into the
   // dedicated `systemInstruction` field.
   //
-  // Two important gotchas for Gemini 2.5 models:
-  //  1. Chain-of-thought tokens count against `maxOutputTokens`. For JSON
-  //     mode we set `thinkingBudget: 0` so all the budget goes to actual
-  //     output — saves an order of magnitude of tokens and fixes truncated
-  //     JSON errors.
-  //  2. Default cap of 4096 still sometimes truncates large schemas. Bump
-  //     to 8192 for JSON; long-form markdown gets 8192 too.
+  // Three important gotchas for Gemini 2.5 models:
+  //  1. Chain-of-thought tokens count against `maxOutputTokens`. We set
+  //     `thinkingBudget: 0` for BOTH json-mode and text-mode calls — neither
+  //     the outline JSON nor the body markdown benefits enough from thinking
+  //     to justify burning 2–4k tokens of the output budget. Without this,
+  //     ~1200-word blogs reliably truncate with finishReason MAX_TOKENS even
+  //     at maxOutputTokens=8192.
+  //  2. Default 4096 cap is too tight for long-form markdown. Use 12288 for
+  //     body text (covers ~3000 words including headings/tables) and 8192
+  //     for JSON.
+  //  3. JSON mode also needs `responseMimeType: "application/json"` so the
+  //     model emits a parseable object rather than prose.
   const isGemini25 = /^gemini-2\.5/.test(model);
   const generationConfig: Record<string, unknown> = {
     temperature: args.temperature ?? 0.5,
-    maxOutputTokens: args.maxTokens ?? 8192,
+    maxOutputTokens: args.maxTokens ?? (args.jsonMode ? 8192 : 12288),
   };
+  if (isGemini25) {
+    generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  }
   if (args.jsonMode) {
     generationConfig.responseMimeType = "application/json";
-    if (isGemini25) {
-      generationConfig.thinkingConfig = { thinkingBudget: 0 };
-    }
   }
 
   const body: Record<string, unknown> = {

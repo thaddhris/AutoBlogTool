@@ -223,7 +223,9 @@ export type ImageProvider =
   | "gemini"
   | "pexels"
   | "fal"
-  | "fluxapi";
+  | "fluxapi"
+  | "openai"
+  | "openai-agentic";
 
 export type WriterProvider = "groq" | "gemini";
 
@@ -264,6 +266,14 @@ export interface Settings {
   fluxapi_api_key: string;
   /** fluxapi.ai model. Valid: "flux-kontext-pro" (default), "flux-kontext-max". */
   fluxapi_image_model: string;
+  /** OpenAI API key — used for image generation when `image_provider === "openai"`. */
+  openai_api_key: string;
+  /** OpenAI image model. "gpt-image-1" (newer, sharper, default) or "dall-e-3". */
+  openai_image_model: string;
+  /** When true, the platform composites the post title (and brand name) onto
+   *  every AI-generated banner using a glassmorphism panel. Doesn't affect
+   *  placeholder or pexels banners. */
+  banner_title_overlay: boolean;
   /** Max inline Pexels images to insert into the post body. 0 = off. The
    *  LLM is asked to drop [[image: query]] placeholders during body
    *  generation; the platform resolves them via Pexels (requires
@@ -340,6 +350,9 @@ export const DEFAULT_SETTINGS: Settings = {
   fal_image_model: "fal-ai/flux/schnell",
   fluxapi_api_key: "",
   fluxapi_image_model: "flux-kontext-pro",
+  openai_api_key: "",
+  openai_image_model: "gpt-image-1",
+  banner_title_overlay: true,
   inline_images_max: 0,
   public_base_url: "",
   webflow_token: "",

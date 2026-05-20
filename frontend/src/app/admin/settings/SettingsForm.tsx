@@ -50,6 +50,7 @@ export default function SettingsForm({
   hasPexelsKey,
   hasFalKey,
   hasFluxapiKey,
+  hasOpenaiKey,
 }: {
   initial: Settings;
   hasGroqKey: boolean;
@@ -58,6 +59,7 @@ export default function SettingsForm({
   hasPexelsKey: boolean;
   hasFalKey: boolean;
   hasFluxapiKey: boolean;
+  hasOpenaiKey: boolean;
 }) {
   const router = useRouter();
   const [form, setForm] = useState<Settings>(initial);
@@ -83,6 +85,7 @@ export default function SettingsForm({
         "pexels_api_key",
         "fal_api_key",
         "fluxapi_api_key",
+        "openai_api_key",
       ] as const) {
         const v = payload[k];
         if (typeof v === "string" && v.startsWith("•")) {
@@ -367,6 +370,10 @@ export default function SettingsForm({
             className="max-w-[260px]"
           >
             <option value="placeholder">Placeholder (colored gradient)</option>
+            <option value="openai">OpenAI · gpt-image-1 / DALL·E (AI-generated)</option>
+            <option value="openai-agentic">
+              OpenAI · agentic chain (gpt-4.1 + gpt-image-1, smartest)
+            </option>
             <option value="fluxapi">FluxAPI · FLUX Kontext (AI-generated)</option>
             <option value="fal">Fal AI · FLUX (AI-generated, fast + cheap)</option>
             <option value="gemini">Google Gemini (AI-generated, paid)</option>
@@ -409,6 +416,53 @@ export default function SettingsForm({
               <p className="text-[11px] text-zinc-500 mt-1">
                 Default works well. Change only if Google releases a newer
                 image model.
+              </p>
+            </div>
+          </div>
+        )}
+        {(form.image_provider === "openai" ||
+          form.image_provider === "openai-agentic") && (
+          <div className="space-y-3">
+            {form.image_provider === "openai-agentic" && (
+              <p className="text-[11px] text-violet-700 bg-violet-50 border border-violet-200 rounded px-2 py-1.5">
+                Agentic mode runs 3 extra OpenAI text calls (gpt-4.1-mini,
+                gpt-4.1) per banner to optimize the title, derive a visual
+                style, and rewrite the image prompt before generation. Costs
+                a few extra cents per blog but produces more on-topic
+                photography. Each agent&apos;s output is logged under{" "}
+                <code>image.agent.*</code> in the Activity Log.
+              </p>
+            )}
+            <div>
+              <Label required>OpenAI API key</Label>
+              <Input
+                value={form.openai_api_key}
+                onChange={(e) => update("openai_api_key", e.target.value)}
+                placeholder={
+                  hasOpenaiKey
+                    ? "(saved — type a new one to replace)"
+                    : "sk-…"
+                }
+              />
+              <p className="text-[11px] text-zinc-500 mt-1">
+                Get one at <code>platform.openai.com/api-keys</code>.{" "}
+                <code>gpt-image-1</code> requires a verified organization —
+                check Settings → Organization → Verification on the OpenAI
+                dashboard if you hit a 403.
+              </p>
+            </div>
+            <div>
+              <Label>Model</Label>
+              <Input
+                value={form.openai_image_model}
+                onChange={(e) =>
+                  update("openai_image_model", e.target.value)
+                }
+                placeholder="gpt-image-1"
+              />
+              <p className="text-[11px] text-zinc-500 mt-1">
+                <code>gpt-image-1</code> (default) is the newer, sharper
+                model. Use <code>dall-e-3</code> as a cheaper fallback.
               </p>
             </div>
           </div>
@@ -505,6 +559,29 @@ export default function SettingsForm({
             </div>
           </div>
         )}
+        {form.image_provider !== "placeholder" &&
+          form.image_provider !== "pexels" && (
+            <div className="mt-4">
+              <label className="flex items-start gap-2 text-sm text-zinc-700">
+                <input
+                  type="checkbox"
+                  checked={form.banner_title_overlay !== false}
+                  onChange={(e) =>
+                    update("banner_title_overlay", e.target.checked)
+                  }
+                  className="mt-0.5 rounded border-zinc-300"
+                />
+                <span>
+                  Paint the post title onto the banner
+                  <span className="block text-[11px] text-zinc-500 font-normal mt-0.5">
+                    Adds a glassmorphism panel with the brand name and post
+                    title overlaid on the right side of the image. Turn off
+                    for plain photographic backgrounds.
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
         {form.image_provider !== "placeholder" && (
           <div className="mt-4">
             <Label>Your site URL</Label>

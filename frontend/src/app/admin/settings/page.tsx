@@ -36,6 +36,9 @@ export default async function SettingsPage() {
           fluxapi_api_key: s.fluxapi_api_key
             ? "•••••••••" + s.fluxapi_api_key.slice(-4)
             : "",
+          openai_api_key: s.openai_api_key
+            ? "•••••••••" + s.openai_api_key.slice(-4)
+            : "",
         }}
         hasGroqKey={Boolean(s.groq_api_key)}
         hasWebflowToken={Boolean(s.webflow_token)}
@@ -43,6 +46,7 @@ export default async function SettingsPage() {
         hasPexelsKey={Boolean(s.pexels_api_key)}
         hasFalKey={Boolean(s.fal_api_key)}
         hasFluxapiKey={Boolean(s.fluxapi_api_key)}
+        hasOpenaiKey={Boolean(s.openai_api_key)}
       />
     </div>
   );

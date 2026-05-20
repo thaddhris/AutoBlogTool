@@ -90,13 +90,35 @@ const TRADITIONAL_ASPECT_KEYS = [
   "content_structure",
 ] as const;
 
+// `field` is an optional auto-apply hint. The LLM occasionally drifts (emits
+// "title", "meta", "schema_json", or a translated synonym) — those values
+// have no auto-apply path on the server, so coerce anything outside the
+// allow-list to undefined instead of failing the whole audit. We accept any
+// string here and post-filter in a refine step.
+const APPLIABLE_FIELDS = [
+  "title_tag",
+  "meta_description",
+  "excerpt",
+  "tldr",
+  "faq",
+] as const;
+type AppliableField = (typeof APPLIABLE_FIELDS)[number];
+const APPLIABLE_FIELD_SET = new Set<string>(APPLIABLE_FIELDS);
+const TolerantFieldSchema = z
+  .string()
+  .optional()
+  .nullable()
+  .transform((v) =>
+    typeof v === "string" && APPLIABLE_FIELD_SET.has(v)
+      ? (v as AppliableField)
+      : undefined,
+  );
+
 const TraditionalRecommendationSchema = z.object({
   priority: z.enum(["high", "medium", "low"]),
   aspect: z.enum(TRADITIONAL_ASPECT_KEYS),
   action: z.string().min(8).max(320),
-  field: z
-    .enum(["title_tag", "meta_description", "excerpt", "tldr", "faq"])
-    .optional(),
+  field: TolerantFieldSchema,
 });
 
 const RewritesSchema = z

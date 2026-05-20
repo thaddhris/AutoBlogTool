@@ -37,8 +37,27 @@ export default function RequestActions({
       const res = await fetch(`/api/requests/${request.id}/generate`, {
         method: "POST",
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Generate failed");
+      // Robust to non-JSON bodies — when the upstream Next process is being
+      // restarted, the proxy can return an HTML 502/504 page. Parsing that
+      // as JSON would throw "Unexpected token '<'", which is unhelpful.
+      let serverMessage: string | null = null;
+      const raw = await res.text();
+      try {
+        const json = raw ? JSON.parse(raw) : null;
+        serverMessage =
+          json && typeof json === "object"
+            ? (json.error ?? null)
+            : null;
+      } catch {
+        // Body wasn't JSON. Trim any HTML noise out of the snippet.
+        serverMessage = raw.replace(/<[^>]+>/g, "").trim().slice(0, 240) || null;
+      }
+      if (!res.ok) {
+        throw new Error(
+          serverMessage ||
+            `Generate failed (HTTP ${res.status} ${res.statusText}). The dev server may be restarting — wait a few seconds and try again.`,
+        );
+      }
       router.refresh();
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
