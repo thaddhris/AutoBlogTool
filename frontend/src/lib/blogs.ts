@@ -283,6 +283,31 @@ export function updateBlog(id: string, patch: BlogPatch): Blog | null {
 }
 
 /**
+ * Hard-delete a blog row. The caller is responsible for refusing to delete
+ * published / publishing blogs — this helper doesn't check status itself so
+ * it can also be used by the cleanup utilities and the pipeline's "replace
+ * prior draft" path.
+ *
+ * Side effect: any blog_request whose `blog_id` pointed at this row has its
+ * `blog_id` cleared so the request stops linking to a now-nonexistent blog.
+ * The request's own status is left alone — the admin can decide whether to
+ * re-queue it (set status=pending) or delete the request itself.
+ *
+ * Returns true when a row was actually removed.
+ */
+export function deleteBlog(id: string): boolean {
+  const d = db();
+  const tx = d.transaction((blogId: string) => {
+    d.prepare(`UPDATE blog_requests SET blog_id = NULL WHERE blog_id = ?`).run(
+      blogId,
+    );
+    const res = d.prepare(`DELETE FROM blogs WHERE id = ?`).run(blogId);
+    return res.changes > 0;
+  });
+  return tx(id);
+}
+
+/**
  * Drafts whose auto-publish timer has elapsed. Includes legacy 'scheduled'
  * rows from the old data model so they still get drained.
  */

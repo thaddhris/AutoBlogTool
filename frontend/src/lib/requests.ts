@@ -9,6 +9,7 @@ interface RequestRow {
   keywords_json: string;
   instructions: string;
   tags_json: string | null;
+  collection_id: string | null;
   priority: number;
   status: string;
   blog_id: string | null;
@@ -25,6 +26,7 @@ function rowToRequest(r: RequestRow): BlogRequest {
     keywords: safeArray(r.keywords_json),
     instructions: r.instructions,
     tags: safeArray(r.tags_json ?? "[]"),
+    collection_id: r.collection_id ?? null,
     priority: r.priority,
     status: r.status as RequestStatus,
     blog_id: r.blog_id,
@@ -50,15 +52,22 @@ export interface CreateRequestInput {
   instructions?: string;
   tags?: string[];
   priority?: number;
+  /** Optional Webflow collection override. Leave blank to use the global
+   *  default from Settings. */
+  collection_id?: string | null;
 }
 
 export function createRequest(input: CreateRequestInput): BlogRequest {
   const id = nanoid(12);
+  const collectionId =
+    typeof input.collection_id === "string"
+      ? input.collection_id.trim() || null
+      : null;
   db()
     .prepare(
       `INSERT INTO blog_requests
-         (id, label, topic, keywords_json, instructions, tags_json, priority)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         (id, label, topic, keywords_json, instructions, tags_json, priority, collection_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
@@ -68,6 +77,7 @@ export function createRequest(input: CreateRequestInput): BlogRequest {
       input.instructions ?? "",
       JSON.stringify(normalizeTags(input.tags ?? [])),
       input.priority ?? 0,
+      collectionId,
     );
   logEvent("request.create", input.label, { requestId: id });
   return getRequest(id)!;
@@ -130,6 +140,7 @@ export function updateRequest(
     keywords: string[];
     instructions: string;
     tags: string[];
+    collection_id: string | null;
     priority: number;
     status: RequestStatus;
     blog_id: string | null;
@@ -157,6 +168,17 @@ export function updateRequest(
   if (patch.tags !== undefined) {
     fields.push("tags_json = ?");
     values.push(JSON.stringify(normalizeTags(patch.tags)));
+  }
+  if (patch.collection_id !== undefined) {
+    fields.push("collection_id = ?");
+    // Treat empty / whitespace strings as "use default" — store as NULL so
+    // the publisher's `request.collection_id ?? settings.webflow_collection_id`
+    // fallback fires.
+    const v =
+      typeof patch.collection_id === "string"
+        ? patch.collection_id.trim() || null
+        : null;
+    values.push(v);
   }
   if (patch.priority !== undefined) {
     fields.push("priority = ?");

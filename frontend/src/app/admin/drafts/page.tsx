@@ -6,6 +6,7 @@ import ClientTime from "@/components/ClientTime";
 import { SeoScoreEmpty, SeoScorePill } from "@/components/SeoScore";
 import DateRangeFilter from "@/components/DateRangeFilter";
 import { parseBound, withinRange } from "@/lib/dateFilter";
+import DeleteBlogButton from "@/components/DeleteBlogButton";
 
 export const dynamic = "force-dynamic";
 
@@ -56,13 +57,14 @@ export default async function DraftsPage({
               <th className="px-4 py-3 font-medium">SEO</th>
               <th className="px-4 py-3 font-medium">Auto-publish</th>
               <th className="px-4 py-3 font-medium">Status</th>
+              <th className="px-4 py-3 font-medium w-16 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {blogs.length === 0 && (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="px-4 py-12 text-center text-sm text-zinc-400"
                 >
                   No drafts.
@@ -109,6 +111,13 @@ export default async function DraftsPage({
                 </td>
                 <td className="px-4 py-3">
                   <BlogStatusBadge status={b.status} />
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <DeleteBlogButton
+                    blogId={b.id}
+                    title={b.title}
+                    status={b.status}
+                  />
                 </td>
               </tr>
             ))}

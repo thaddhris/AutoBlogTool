@@ -4,12 +4,13 @@ import { getRequest } from "@/lib/requests";
 import { listResources } from "@/lib/resources";
 import { listPoolResources } from "@/lib/pool";
 import { getBlogByRequest } from "@/lib/blogs";
+import { getSettings } from "@/lib/settings";
 import { Card } from "@/components/ui";
 import { RequestStatusBadge, BlogStatusBadge } from "@/components/StatusBadge";
 import { SeoScorePill } from "@/components/SeoScore";
 import RequestActions from "./RequestActions";
 import ResourcesPanel from "./ResourcesPanel";
-import BriefEditor from "./BriefEditor";
+import BriefEditor, { type CollectionOption } from "./BriefEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,47 @@ export default async function RequestDetailPage({
   const matchedPool = req.tags.length
     ? listPoolResources({ tags: req.tags, limit: 20 })
     : [];
+
+  // Build the list of Webflow collections the admin can pick from for the
+  // per-request override. Sources: the saved field-mappings (every
+  // collection they've fetched fields for) + the global Settings default if
+  // that one happens not to have a mapping yet. Sort: default first, then
+  // alphabetically by display name. If the request already has a
+  // collection_id that's NOT in either set, add it as a stray entry so
+  // editing the request doesn't silently drop the value.
+  const settings = getSettings();
+  const defaultCollectionId = (settings.webflow_collection_id || "").trim();
+  const mappings = settings.webflow_field_mappings ?? {};
+  const collectionOptions: CollectionOption[] = [];
+  if (defaultCollectionId) {
+    const m = mappings[defaultCollectionId];
+    collectionOptions.push({
+      id: defaultCollectionId,
+      displayName: m?.collection_display_name || "Settings default",
+      isDefault: true,
+      hasMapping: Boolean(m),
+    });
+  }
+  for (const [id, m] of Object.entries(mappings)) {
+    if (id === defaultCollectionId) continue;
+    collectionOptions.push({
+      id,
+      displayName: m.collection_display_name || id,
+      isDefault: false,
+      hasMapping: true,
+    });
+  }
+  if (
+    req.collection_id &&
+    !collectionOptions.find((o) => o.id === req.collection_id)
+  ) {
+    collectionOptions.push({
+      id: req.collection_id,
+      displayName: "(saved on this request, no mapping fetched)",
+      isDefault: false,
+      hasMapping: false,
+    });
+  }
 
   return (
     <div className="p-8 space-y-6 max-w-5xl">
@@ -64,7 +106,7 @@ export default async function RequestDetailPage({
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <BriefEditor request={req} />
+        <BriefEditor request={req} collections={collectionOptions} />
 
         {blog && (
           <Card>

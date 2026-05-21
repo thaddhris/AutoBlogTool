@@ -22,6 +22,41 @@ export default function RequestActions({
   const isPublished = request.status === "published";
   const isProcessing = request.status === "processing";
 
+  // ── Background-mode generate ───────────────────────────────────────────
+  // The generate route returns 202 immediately and runs the pipeline in the
+  // background (so nginx's 60s proxy_read_timeout doesn't 504 us). After
+  // kick-off we poll /api/requests/<id> every 3s until the request status
+  // leaves 'processing' — at which point we know the pipeline finished and
+  // can either show the error or refresh into the new draft.
+  async function pollUntilDone(): Promise<{
+    status: string;
+    last_error: string | null;
+  } | null> {
+    const MAX_POLLS = 100; // 100 × 3s = 5 minutes — far longer than any
+    // realistic generation. If we exceed this the
+    // pipeline is probably stuck.
+    for (let i = 0; i < MAX_POLLS; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      try {
+        const r = await fetch(`/api/requests/${request.id}`, {
+          cache: "no-store",
+        });
+        if (!r.ok) continue; // transient — keep trying
+        const j = await r.json();
+        const status = j?.request?.status as string | undefined;
+        if (status && status !== "processing") {
+          return {
+            status,
+            last_error: j.request.last_error ?? null,
+          };
+        }
+      } catch {
+        // network blip — keep polling
+      }
+    }
+    return null;
+  }
+
   async function generate() {
     if (isPublished) return;
     if (
@@ -56,6 +91,22 @@ export default function RequestActions({
         throw new Error(
           serverMessage ||
             `Generate failed (HTTP ${res.status} ${res.statusText}). The dev server may be restarting — wait a few seconds and try again.`,
+        );
+      }
+
+      // Show the "processing" badge on the page while the pipeline runs.
+      router.refresh();
+
+      // Wait for the pipeline to finish in the background, then react.
+      const finalState = await pollUntilDone();
+      if (!finalState) {
+        alert(
+          "Generation is taking longer than 5 minutes. The pipeline is probably still running on the server — refresh the page in a minute to see if the draft appeared.",
+        );
+      } else if (finalState.status === "failed") {
+        alert(
+          finalState.last_error ||
+            "Generation failed for an unknown reason. Check the Activity Log.",
         );
       }
       router.refresh();

@@ -223,6 +223,12 @@ function migrate(d: Database.Database) {
   // overlap with this set are auto-attached at generation time.
   addColumn(d, "blog_requests", "tags_json", "TEXT NOT NULL DEFAULT '[]'");
 
+  // Optional per-request Webflow collection override. NULL → fall back to
+  // settings.webflow_collection_id at publish time. Set per-request to
+  // route specific posts to a different collection (e.g. one batch to a
+  // staging collection, another to prod).
+  addColumn(d, "blog_requests", "collection_id", "TEXT");
+
   // LLM-powered SEO audit caches. Populated when the admin clicks "Run SEO
   // audit" on a blog; we cache so the editor doesn't burn tokens on every
   // page load. Nullable — absence means "no audit run yet".

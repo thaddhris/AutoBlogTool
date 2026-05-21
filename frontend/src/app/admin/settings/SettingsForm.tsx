@@ -11,6 +11,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import { Settings } from "@/lib/types";
+import WebflowMappingPanel from "./WebflowMappingPanel";
 import {
   BODY_PLACEHOLDERS,
   DEFAULT_BODY_SYSTEM,
@@ -765,15 +766,22 @@ export default function SettingsForm({
         )}
       </Card>
 
+      <WebflowMappingPanel
+        collectionId={form.webflow_collection_id}
+        hasToken={hasWebflowToken || Boolean(form.webflow_token)}
+        mappings={form.webflow_field_mappings ?? {}}
+        onMappingChange={(next) => update("webflow_field_mappings", next)}
+      />
+
       <Card>
         <div className="text-xs uppercase tracking-wide text-zinc-500 mb-3">
-          Match Webflow fields
+          Match Webflow fields (legacy — used only when no detected fields are saved)
         </div>
         <p className="text-[11px] text-zinc-500 mb-3">
-          Tell us the name of each field in your Webflow collection so we
-          know where to send each piece of the post. The defaults match the
-          standard Faclon &ldquo;Blog Posts&rdquo; collection — change any
-          that you&apos;ve renamed. Leave blank to skip a field.
+          Hand-typed slug-name fallbacks for the original Faclon &ldquo;Blog
+          Posts&rdquo; collection. As soon as you click <strong>Fetch fields</strong>{" "}
+          above, this section is ignored — the publisher uses the detected
+          mapping instead.
         </p>
 
         <div className="text-[11px] uppercase tracking-wide text-zinc-400 mb-2">

@@ -49,6 +49,10 @@ export interface BlogRequest {
   status: RequestStatus;
   blog_id: string | null;
   last_error: string | null;
+  /** Optional Webflow collection override. When set, the publisher routes
+   *  this blog to this collection id instead of `settings.webflow_collection_id`.
+   *  `null` / empty string means "use the global default from Settings". */
+  collection_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -310,6 +314,66 @@ export interface Settings {
   webflow_default_category_id: string; // category item id to use by default
   // Words per minute used to compute reading_time from word_count.
   webflow_reading_wpm: number;
+  /**
+   * Per-collection field mappings discovered via Webflow's collection schema
+   * endpoint. Keyed by collection id so switching between staging/prod
+   * collections doesn't lose the mapping each time. When a mapping exists
+   * for the active `webflow_collection_id`, the publisher uses it AS-IS and
+   * the legacy `webflow_*_field` slug settings are ignored — that's the
+   * migration path for existing setups.
+   */
+  webflow_field_mappings: Record<string, WebflowMapping>;
+}
+
+/** One blog-side value we know how to produce and can feed into a Webflow
+ *  field. `null` is the "leave blank" choice in the UI. */
+export type ContentField =
+  | "title"
+  | "slug"
+  | "body_html"
+  | "excerpt"
+  | "meta_title"
+  | "meta_description"
+  | "hero_image"
+  | "hero_image_alt"
+  | "reading_time"
+  | "faq_html"
+  | "schema_json"
+  | "author_ref"
+  | "categories_ref"
+  | "featured_flag";
+
+/** Mapping for one Webflow field on one collection. */
+export interface WebflowFieldMapEntry {
+  /** The Webflow field's slug (e.g. "post-body"). */
+  slug: string;
+  /** The Webflow field's human display name, cached so the UI doesn't have
+   *  to re-fetch the schema just to render the table. */
+  displayName: string;
+  /** Webflow field type (PlainText, RichText, Image, MultiReference…), kept
+   *  for the UI so it can show the type next to the name and pick smart
+   *  defaults. */
+  type: string;
+  /** Whether Webflow requires this field. The UI blocks unchecking required
+   *  fields. */
+  required: boolean;
+  /** Whether the user has enabled this field for auto-population. */
+  enabled: boolean;
+  /** Which of our generated values feeds this Webflow field. `null` means
+   *  "leave blank / let Webflow default apply". */
+  contentField: ContentField | null;
+}
+
+/** All mappings for one collection. */
+export interface WebflowMapping {
+  /** When the schema was last fetched — shown in the UI so admins know if
+   *  they should refresh. */
+  fetched_at: string;
+  /** Cached collection-level metadata (just the display name + slug, for the
+   *  banner above the mapping table). */
+  collection_display_name: string;
+  /** Indexed by Webflow field slug for stable lookup. */
+  fields: Record<string, WebflowFieldMapEntry>;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -359,4 +423,5 @@ export const DEFAULT_SETTINGS: Settings = {
   webflow_site_id: "",
   webflow_collection_id: "",
   webflow_featured_default: false,
+  webflow_field_mappings: {},
 };

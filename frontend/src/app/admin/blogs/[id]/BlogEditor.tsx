@@ -13,6 +13,7 @@ import {
 import { Blog } from "@/lib/types";
 import { Pencil, X, Plus, Trash2, AlertTriangle } from "lucide-react";
 import SeoAuditPanel from "./SeoAuditPanel";
+import BannerActions from "./BannerActions";
 import BodyEditor from "@/components/BodyEditor";
 
 type EditableFields = {
@@ -151,12 +152,15 @@ export default function BlogEditor({
         </div>
 
         {!editing && blog.banner_url && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={blog.banner_url}
-            alt={blog.banner_alt ?? blog.title}
-            className="w-full rounded-md mb-4 border border-zinc-200"
-          />
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={blog.banner_url}
+              alt={blog.banner_alt ?? blog.title}
+              className="w-full rounded-md mb-2 border border-zinc-200"
+            />
+            <BannerActions blogId={blog.id} status={blog.status} />
+          </>
         )}
 
         {editing && (

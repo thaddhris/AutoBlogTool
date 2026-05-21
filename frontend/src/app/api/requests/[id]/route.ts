@@ -51,6 +51,9 @@ export async function PATCH(
   if (body.priority !== undefined && Number.isFinite(body.priority))
     patch.priority = Number(body.priority);
   if (body.status !== undefined) patch.status = body.status;
+  if (body.collection_id !== undefined)
+    patch.collection_id =
+      typeof body.collection_id === "string" ? body.collection_id : null;
   const updated = updateRequest(id, patch);
   if (!updated) return Response.json({ error: "Not found" }, { status: 404 });
   return Response.json({ request: updated });

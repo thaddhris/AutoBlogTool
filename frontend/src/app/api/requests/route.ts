@@ -39,6 +39,8 @@ export async function POST(request: NextRequest) {
     tags: parseList(body.tags),
     instructions: String(body.instructions ?? "").trim(),
     priority: Number.isFinite(body.priority) ? body.priority : 0,
+    collection_id:
+      typeof body.collection_id === "string" ? body.collection_id : null,
   });
   return Response.json({ request: created }, { status: 201 });
 }

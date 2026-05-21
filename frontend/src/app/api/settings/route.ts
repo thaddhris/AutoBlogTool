@@ -98,6 +98,7 @@ export async function PUT(request: NextRequest) {
     "webflow_categories_field",
     "webflow_default_category_id",
     "webflow_reading_wpm",
+    "webflow_field_mappings",
   ];
   const patch: Partial<Settings> = {};
   for (const k of allowed) {

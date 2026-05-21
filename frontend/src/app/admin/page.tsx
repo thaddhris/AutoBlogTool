@@ -7,6 +7,7 @@ import { Countdown } from "@/components/Countdown";
 import ClientTime from "@/components/ClientTime";
 import { RequestStatusBadge, BlogStatusBadge } from "@/components/StatusBadge";
 import { SeoScorePill } from "@/components/SeoScore";
+import DeleteBlogButton from "@/components/DeleteBlogButton";
 import RunNowButton from "./RunNowButton";
 import DateRangeFilter from "@/components/DateRangeFilter";
 import { parseBound, withinRange } from "@/lib/dateFilter";
@@ -293,7 +294,15 @@ export default async function OverviewPage({
             >
               <div className="flex items-center justify-between gap-2">
                 <div className="text-sm font-medium truncate">{b.title}</div>
-                <BlogStatusBadge status={b.status} />
+                <div className="flex items-center gap-1 shrink-0">
+                  <BlogStatusBadge status={b.status} />
+                  <DeleteBlogButton
+                    blogId={b.id}
+                    title={b.title}
+                    status={b.status}
+                    size="sm"
+                  />
+                </div>
               </div>
               <div className="text-xs text-red-700 mt-1">
                 Publish failed — open to retry or unpublish.

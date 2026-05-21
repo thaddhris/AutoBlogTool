@@ -245,8 +245,14 @@ export async function applyTitleOverlay(
   fs.writeFileSync(bannerAbsPath, composited);
 }
 
-/** Turn a site-relative banner URL (`/banners/<id>.png`) into a disk path. */
+/** Turn a site-relative banner URL into the absolute disk path that backs it.
+ *  Accepts both the new `/api/banners/<id>.png` (production) and the legacy
+ *  `/banners/<id>.png` (pre-migration) shapes. */
 export function bannerUrlToPath(url: string): string {
-  const file = url.replace(/^\/+/, "");
-  return path.join(process.cwd(), "public", file);
+  const filename = url.replace(/^.*\//, "");
+  // New canonical location — survives `next build`'s public/ snapshot.
+  const newPath = path.join(process.cwd(), ".data", "banners", filename);
+  if (path.basename(newPath) === filename) return newPath;
+  // Fallback (shouldn't hit, but defensive).
+  return path.join(process.cwd(), "public", "banners", filename);
 }
