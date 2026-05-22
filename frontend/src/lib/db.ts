@@ -229,6 +229,12 @@ function migrate(d: Database.Database) {
   // staging collection, another to prod).
   addColumn(d, "blog_requests", "collection_id", "TEXT");
 
+  // Cached DataForSEO SERP insights for the request's primary keyword.
+  // Populated either by the admin clicking "Analyze SERP" on the request
+  // page or by the pipeline on the first generation. Cached so regenerates
+  // don't re-bill DataForSEO. Stored as the full SerpInsights JSON.
+  addColumn(d, "blog_requests", "serp_analysis_json", "TEXT");
+
   // LLM-powered SEO audit caches. Populated when the admin clicks "Run SEO
   // audit" on a blog; we cache so the editor doesn't burn tokens on every
   // page load. Nullable — absence means "no audit run yet".

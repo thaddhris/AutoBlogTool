@@ -75,6 +75,25 @@ export function blogPostingLd(blog: Blog) {
         .filter(Boolean)
         .join(", ") || undefined,
     inLanguage: "en-US",
+    // ── AEO: SpeakableSpecification ──
+    // Tells voice assistants (Google Assistant, Siri-via-Schema, etc.) which
+    // parts of the page they can read aloud. We point at:
+    //   • h1                — the title
+    //   • .quick-answer     — the 40-60 word self-contained answer block
+    //                         the body now opens with (also doubles as
+    //                         featured-snippet bait for Google).
+    //   • .key-takeaways    — the closing bullet list, useful for
+    //                         summarisation by AI search engines.
+    // Selectors are CSS, not XPath, because every modern voice agent
+    // implements the CSS form and it survives Webflow's sanitisation.
+    speakable: {
+      "@type": "SpeakableSpecification",
+      cssSelector: ["h1", ".quick-answer", ".key-takeaways"],
+    },
+    // ── AEO: explicit "isAccessibleForFree" + license signals so AI search
+    // engines know the content can be cited freely. ──
+    isAccessibleForFree: true,
+    isFamilyFriendly: true,
   };
 }
 
@@ -86,7 +105,15 @@ export function faqPageLd(items: { q: string; a: string }[]) {
     mainEntity: items.map((i) => ({
       "@type": "Question",
       name: i.q,
-      acceptedAnswer: { "@type": "Answer", text: i.a },
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: i.a,
+        // Marking each Answer as inLanguage en-US + the same accessibility
+        // signals as the parent BlogPosting helps Perplexity / ChatGPT
+        // citation rates. They preferentially cite Answers with full
+        // structured metadata over plain prose.
+        inLanguage: "en-US",
+      },
     })),
   };
 }

@@ -12,6 +12,11 @@ import { resolveInternalLinks } from "./internalLinks";
 import { runQualityChecks } from "./quality";
 import { Blog } from "./types";
 import {
+  buildSerpPromptBlock,
+  fetchSerpInsights,
+  type SerpInsights,
+} from "./dataforseo";
+import {
   DEFAULT_BODY_SYSTEM,
   DEFAULT_BODY_USER,
   DEFAULT_OUTLINE_SYSTEM,
@@ -33,6 +38,28 @@ function renderTemplate(
       ? vars[name]
       : `{{${name}}}`,
   );
+}
+
+/**
+ * Trim a meta description to a Google-clean length without lopping a word
+ * in half. Google's SERP truncates at ~155-160 chars on desktop and ~120
+ * on mobile, so the safe ceiling is 165. If the LLM produced something
+ * longer, we cut at the last word boundary ≤ 165 and append an ellipsis
+ * — keeps the text readable while passing every SEO audit.
+ */
+function truncateMetaDescription(s: string, max = 165): string {
+  const trimmed = s.trim().replace(/\s+/g, " ");
+  if (trimmed.length <= max) return trimmed;
+  const slice = trimmed.slice(0, max - 1);
+  const lastBreak = Math.max(
+    slice.lastIndexOf(" "),
+    slice.lastIndexOf(", "),
+    slice.lastIndexOf(". "),
+    slice.lastIndexOf("; "),
+  );
+  // If there's no nearby word break, just hard-cut at max-1 and append "…".
+  const cut = lastBreak > max * 0.6 ? slice.slice(0, lastBreak) : slice;
+  return cut.replace(/[.,;: ]+$/, "") + "…";
 }
 
 // ─── Outline JSON contract ───────────────────────────────────────────────────
@@ -57,10 +84,16 @@ const OutlineSchema = z.object({
     .string()
     .min(10, "title_tag must be at least 10 chars")
     .max(80, "title_tag must be at most 80 chars"),
+  // Zod ceiling at 280 chars (was 200). Google truncates at ~160 so anything
+  // above that gets cropped anyway — we accept up to 280 from the LLM as
+  // grace, then auto-truncate at word boundary to ≤165 chars below (search
+  // for `truncateMetaDescription`). Without the grace zone, models like
+  // Gemini occasionally fail validation entirely when they're feeling
+  // verbose, even after 2 retries.
   meta_description: z
     .string()
     .min(50, "meta_description must be at least 50 chars")
-    .max(200, "meta_description must be at most 200 chars"),
+    .max(280, "meta_description must be at most 280 chars"),
   h1: z.string().min(5, "h1 must be at least 5 chars").max(160),
   slug_seed: z
     .string()
@@ -70,7 +103,13 @@ const OutlineSchema = z.object({
     .optional(),
   primary_keyword: z.string().min(2).max(80),
   secondary_keywords: z.array(z.string().min(2).max(80)).min(2).max(8),
-  tldr: z.string().min(50).max(700),
+  // Quick Answer (AEO target). Spec says 40–60 words ≈ 220–360 chars but
+  // we leave a small grace zone on each side (160–500) so a slightly
+  // long/short attempt still passes Zod and the retry budget isn't burned
+  // on a re-validate loop. The body prompt enforces the 40–60 word window
+  // in natural language; the renderer is what actually sells the AEO
+  // target to crawlers.
+  tldr: z.string().min(160).max(500),
   excerpt: z.string().min(20).max(320),
   tags: z.array(z.string().min(2).max(40)).min(1).max(8),
   outline: z
@@ -174,6 +213,46 @@ export async function generateBlogForRequest(requestId: string): Promise<Blog> {
     );
   }
 
+  // ── Step 0.5: SERP analysis (DataForSEO) ──
+  // Fetch the live Google SERP for the primary keyword (or topic if no
+  // keywords) and feed competitor headings + PAA + featured-snippet + AI
+  // Overview into the outline + body prompts. Cached on the request so a
+  // regenerate doesn't re-bill DataForSEO unnecessarily.
+  let serpBlock = "";
+  let serpInsights: SerpInsights | null =
+    (req.serp_analysis as SerpInsights | null) ?? null;
+  const serpQuery = (req.keywords[0] || req.topic || "").trim();
+  if (
+    settings.serp_analysis_enabled !== false &&
+    !serpInsights &&
+    serpQuery &&
+    settings.dataforseo_login &&
+    settings.dataforseo_password
+  ) {
+    try {
+      serpInsights = await fetchSerpInsights({
+        keyword: serpQuery,
+        locationCode: settings.dataforseo_location_code || 2840,
+        languageCode: settings.dataforseo_language_code || "en",
+      });
+      updateRequest(requestId, { serp_analysis: serpInsights });
+      logEvent(
+        "serp.analyze.ok",
+        `query="${serpQuery}" organic=${serpInsights.organic.length} paa=${serpInsights.people_also_ask.length} cost=$${serpInsights.cost.toFixed(4)}`,
+        { requestId, payload: { cost: serpInsights.cost } },
+      );
+    } catch (err) {
+      // Don't fail the whole pipeline if SERP analysis errors out — write
+      // the post without the SERP context. Surface the error in the log
+      // so admins can fix credentials / quotas later.
+      const msg = err instanceof Error ? err.message : String(err);
+      logEvent("serp.analyze.fail", msg, { requestId });
+    }
+  }
+  if (serpInsights) {
+    serpBlock = buildSerpPromptBlock(serpInsights);
+  }
+
   // ── Step 1: outline + metadata with Zod validation + 2 retries ──
   const baseVars: Record<string, string> = {
     brand_name: settings.brand_name,
@@ -187,6 +266,7 @@ export async function generateBlogForRequest(requestId: string): Promise<Blog> {
       ? `Additional instructions: ${req.instructions}\n`
       : "",
     source_block: sourceBlock,
+    serp_block: serpBlock || "No SERP analysis available for this topic.",
     json_schema: OUTLINE_JSON_SCHEMA_BLOCK,
   };
 
@@ -208,6 +288,20 @@ export async function generateBlogForRequest(requestId: string): Promise<Blog> {
     updateRequest(requestId, { status: "failed", last_error: msg });
     logEvent("request.generate.fail", `outline: ${msg}`, { requestId });
     throw err;
+  }
+
+  // Normalise meta_description. Zod allows up to 280 chars as grace zone;
+  // Google truncates at ~165 anyway, so we proactively trim at word
+  // boundary before anything downstream sees it. Original is logged for
+  // debugging in case the LLM keeps overshooting on a particular topic.
+  if (outline.meta_description.length > 165) {
+    const trimmed = truncateMetaDescription(outline.meta_description, 165);
+    logEvent(
+      "outline.meta_description.truncated",
+      `${outline.meta_description.length} → ${trimmed.length} chars`,
+      { requestId, payload: { original: outline.meta_description } },
+    );
+    outline.meta_description = trimmed;
   }
 
   // ── Step 2: full markdown body, guided by the approved outline ──

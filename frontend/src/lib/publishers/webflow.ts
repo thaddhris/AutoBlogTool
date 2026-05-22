@@ -34,7 +34,20 @@ function escapeHtml(s: string): string {
  * want it on Webflow.
  */
 function buildBodyHtml(blog: Blog, opts: { includeFaq: boolean }): string {
-  const html = marked.parse(blog.content_md || "", { async: false }) as string;
+  const raw = marked.parse(blog.content_md || "", { async: false }) as string;
+  // Safety net: if the writer forgot the AEO Quick Answer wrapper but we
+  // do have a `tldr` field, inject it as the first block so Speakable
+  // schema (selector `.quick-answer`) still has a target. We check both
+  // the explicit class and a loose attribute match because some HTML
+  // sanitisers strip / rewrite class= attributes.
+  let html = raw;
+  const hasQuickAnswer = /class\s*=\s*["'][^"']*\bquick-answer\b/i.test(raw);
+  if (!hasQuickAnswer && blog.tldr && blog.tldr.trim()) {
+    const escaped = escapeHtml(blog.tldr.trim());
+    html =
+      `<div class="quick-answer"><strong>Quick answer:</strong> ${escaped}</div>\n\n` +
+      raw;
+  }
   const parts = [html];
 
   if (opts.includeFaq && blog.faq.length > 0) {

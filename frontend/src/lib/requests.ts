@@ -10,12 +10,23 @@ interface RequestRow {
   instructions: string;
   tags_json: string | null;
   collection_id: string | null;
+  serp_analysis_json: string | null;
   priority: number;
   status: string;
   blog_id: string | null;
   last_error: string | null;
   created_at: string;
   updated_at: string;
+}
+
+function parseJson<T>(s: string | null | undefined): T | null {
+  if (!s) return null;
+  try {
+    const v = JSON.parse(s);
+    return v as T;
+  } catch {
+    return null;
+  }
 }
 
 function rowToRequest(r: RequestRow): BlogRequest {
@@ -27,6 +38,7 @@ function rowToRequest(r: RequestRow): BlogRequest {
     instructions: r.instructions,
     tags: safeArray(r.tags_json ?? "[]"),
     collection_id: r.collection_id ?? null,
+    serp_analysis: parseJson<unknown>(r.serp_analysis_json),
     priority: r.priority,
     status: r.status as RequestStatus,
     blog_id: r.blog_id,
@@ -141,6 +153,7 @@ export function updateRequest(
     instructions: string;
     tags: string[];
     collection_id: string | null;
+    serp_analysis: unknown | null;
     priority: number;
     status: RequestStatus;
     blog_id: string | null;
@@ -179,6 +192,14 @@ export function updateRequest(
         ? patch.collection_id.trim() || null
         : null;
     values.push(v);
+  }
+  if (patch.serp_analysis !== undefined) {
+    fields.push("serp_analysis_json = ?");
+    values.push(
+      patch.serp_analysis === null
+        ? null
+        : JSON.stringify(patch.serp_analysis),
+    );
   }
   if (patch.priority !== undefined) {
     fields.push("priority = ?");

@@ -10,6 +10,7 @@ type MaskedSettings = Settings & {
   has_fal_key: boolean;
   has_fluxapi_key: boolean;
   has_openai_key: boolean;
+  has_dataforseo_creds: boolean;
 };
 
 const SECRET_KEYS: (keyof Settings)[] = [
@@ -20,6 +21,7 @@ const SECRET_KEYS: (keyof Settings)[] = [
   "fal_api_key",
   "fluxapi_api_key",
   "openai_api_key",
+  "dataforseo_password",
 ];
 
 function maskValue(v: string): string {
@@ -36,6 +38,7 @@ function mask(s: Settings): MaskedSettings {
     fal_api_key: maskValue(s.fal_api_key),
     fluxapi_api_key: maskValue(s.fluxapi_api_key),
     openai_api_key: maskValue(s.openai_api_key),
+    dataforseo_password: maskValue(s.dataforseo_password),
     has_groq_key: Boolean(s.groq_api_key),
     has_webflow_token: Boolean(s.webflow_token),
     has_gemini_key: Boolean(s.gemini_api_key),
@@ -43,6 +46,7 @@ function mask(s: Settings): MaskedSettings {
     has_fal_key: Boolean(s.fal_api_key),
     has_fluxapi_key: Boolean(s.fluxapi_api_key),
     has_openai_key: Boolean(s.openai_api_key),
+    has_dataforseo_creds: Boolean(s.dataforseo_login && s.dataforseo_password),
   };
 }
 
@@ -80,6 +84,19 @@ export async function PUT(request: NextRequest) {
     "openai_api_key",
     "openai_image_model",
     "banner_title_overlay",
+    "dataforseo_login",
+    "dataforseo_password",
+    "dataforseo_location_code",
+    "dataforseo_language_code",
+    "dataforseo_min_search_volume",
+    "dataforseo_max_keyword_difficulty",
+    "serp_analysis_enabled",
+    "topic_discovery_enabled",
+    "topic_discovery_seeds",
+    "topic_discovery_excluded_keywords",
+    "topic_discovery_intent_filter",
+    "topic_discovery_max_new_requests",
+    "topic_discovery_min_relevance",
     "inline_images_max",
     "public_base_url",
     "site_url",

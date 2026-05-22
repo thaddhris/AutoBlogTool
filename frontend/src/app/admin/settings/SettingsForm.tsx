@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Button,
@@ -30,9 +31,17 @@ import {
   Wrench,
   Pencil,
   Check,
+  TrendingUp,
 } from "lucide-react";
 
-type TabId = "ai" | "queue" | "brand" | "prompts" | "webflow" | "maintenance";
+type TabId =
+  | "ai"
+  | "queue"
+  | "brand"
+  | "prompts"
+  | "webflow"
+  | "seo"
+  | "maintenance";
 
 const TABS: { id: TabId; label: string; icon: typeof Sparkles }[] = [
   { id: "ai", label: "AI & images", icon: Sparkles },
@@ -40,6 +49,7 @@ const TABS: { id: TabId; label: string; icon: typeof Sparkles }[] = [
   { id: "brand", label: "Writing style", icon: PenTool },
   { id: "prompts", label: "Advanced prompts", icon: FileText },
   { id: "webflow", label: "Webflow", icon: Send },
+  { id: "seo", label: "SEO Intelligence", icon: TrendingUp },
   { id: "maintenance", label: "Refresh older posts", icon: Wrench },
 ];
 
@@ -87,6 +97,7 @@ export default function SettingsForm({
         "fal_api_key",
         "fluxapi_api_key",
         "openai_api_key",
+        "dataforseo_password",
       ] as const) {
         const v = payload[k];
         if (typeof v === "string" && v.startsWith("•")) {
@@ -903,6 +914,309 @@ export default function SettingsForm({
         </div>
       </Card>
       </>
+      )}
+
+      {activeTab === "seo" && (
+      <Card>
+        <div className="text-xs uppercase tracking-wide text-zinc-500 mb-3">
+          DataForSEO credentials
+        </div>
+        <p className="text-[11px] text-zinc-500 mb-3">
+          Powers keyword research, SERP analysis, and rank tracking. Get
+          credentials at <code>dataforseo.com</code> — the login looks like
+          an email and the password is a long random string. Both are stored
+          locally and only sent to <code>api.dataforseo.com</code>.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Label required>API login</Label>
+            <Input
+              value={form.dataforseo_login}
+              onChange={(e) =>
+                update("dataforseo_login", e.target.value)
+              }
+              placeholder="you@yourcompany.com"
+            />
+          </div>
+          <div>
+            <Label required>API password</Label>
+            <Input
+              value={form.dataforseo_password}
+              onChange={(e) =>
+                update("dataforseo_password", e.target.value)
+              }
+              placeholder={
+                form.dataforseo_password?.startsWith("•")
+                  ? "(saved — type a new one to replace)"
+                  : "DataForSEO password"
+              }
+            />
+          </div>
+        </div>
+        <div className="mt-5">
+          <div className="text-[11px] uppercase tracking-wide text-zinc-400 mb-2">
+            Default search filters
+          </div>
+          <p className="text-[11px] text-zinc-500 mb-3">
+            Defaults applied to every keyword-research query. Each search
+            can override these per run.
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <Label>Country (location_code)</Label>
+              <Input
+                type="number"
+                value={form.dataforseo_location_code}
+                onChange={(e) =>
+                  update(
+                    "dataforseo_location_code",
+                    Number(e.target.value) || 2840,
+                  )
+                }
+              />
+              <p className="text-[11px] text-zinc-500 mt-1">
+                2840 = US · 2356 = India · 2826 = UK
+              </p>
+            </div>
+            <div>
+              <Label>Language</Label>
+              <Input
+                value={form.dataforseo_language_code}
+                onChange={(e) =>
+                  update("dataforseo_language_code", e.target.value)
+                }
+                placeholder="en"
+              />
+            </div>
+            <div>
+              <Label>Min search volume</Label>
+              <Input
+                type="number"
+                min={0}
+                value={form.dataforseo_min_search_volume}
+                onChange={(e) =>
+                  update(
+                    "dataforseo_min_search_volume",
+                    Number(e.target.value) || 0,
+                  )
+                }
+              />
+            </div>
+            <div>
+              <Label>Max keyword difficulty</Label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                value={form.dataforseo_max_keyword_difficulty}
+                onChange={(e) =>
+                  update(
+                    "dataforseo_max_keyword_difficulty",
+                    Math.max(
+                      0,
+                      Math.min(100, Number(e.target.value) || 0),
+                    ),
+                  )
+                }
+              />
+              <p className="text-[11px] text-zinc-500 mt-1">
+                0–100. Higher = harder to rank.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="mt-5 pt-4 border-t border-zinc-100">
+          <label className="flex items-start gap-2 text-sm text-zinc-700">
+            <input
+              type="checkbox"
+              checked={form.serp_analysis_enabled !== false}
+              onChange={(e) =>
+                update("serp_analysis_enabled", e.target.checked)
+              }
+              className="mt-0.5 rounded border-zinc-300"
+            />
+            <span>
+              Analyze the live SERP before every generation
+              <span className="block text-[11px] text-zinc-500 font-normal mt-0.5">
+                Before writing, the platform fetches the top-10 Google
+                results for the primary keyword and uses them — plus People
+                Also Ask, featured snippet, and AI Overview — to design an
+                outline that outperforms what&apos;s currently ranking.
+                Each fetch costs ~$0.002 on DataForSEO and is cached per
+                request, so regenerating doesn&apos;t re-bill. Turn this
+                off if you want to write blind.
+              </span>
+            </span>
+          </label>
+        </div>
+        <div className="mt-5 pt-4 border-t border-zinc-100">
+          <div className="text-[11px] uppercase tracking-wide text-zinc-400 mb-2">
+            Autonomous topic discovery
+          </div>
+          <p className="text-[11px] text-zinc-500 mb-3">
+            On a daily-ish cadence, the platform pulls keyword ideas for
+            your seed topics, semantically clusters them, and auto-creates
+            Blog Requests for the highest-opportunity ones. Runs are
+            triggered by the discovery cron or the &ldquo;Discover topics
+            now&rdquo; button on the Overview.
+          </p>
+          <label className="flex items-start gap-2 text-sm text-zinc-700 mb-3">
+            <input
+              type="checkbox"
+              checked={form.topic_discovery_enabled === true}
+              onChange={(e) =>
+                update("topic_discovery_enabled", e.target.checked)
+              }
+              className="mt-0.5 rounded border-zinc-300"
+            />
+            <span>
+              Enable autonomous topic discovery
+              <span className="block text-[11px] text-zinc-500 font-normal mt-0.5">
+                When off, cron and button-triggered runs exit early with a
+                &ldquo;disabled&rdquo; log entry — useful for pausing
+                discovery without rewriting your n8n config.
+              </span>
+            </span>
+          </label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <Label>Seed keywords</Label>
+              <Textarea
+                rows={3}
+                value={(form.topic_discovery_seeds || []).join("\n")}
+                onChange={(e) =>
+                  update(
+                    "topic_discovery_seeds",
+                    e.target.value
+                      .split(/[,\n]/)
+                      .map((s) => s.trim())
+                      .filter(Boolean),
+                  )
+                }
+                placeholder={
+                  "predictive maintenance\nOEE\nindustrial AI\nIIoT"
+                }
+              />
+              <p className="text-[11px] text-zinc-500 mt-1">
+                One per line. The discovery engine expands every seed into
+                related keywords via DataForSEO.
+              </p>
+            </div>
+            <div>
+              <Label>Excluded keywords</Label>
+              <Textarea
+                rows={3}
+                value={(form.topic_discovery_excluded_keywords || []).join(
+                  "\n",
+                )}
+                onChange={(e) =>
+                  update(
+                    "topic_discovery_excluded_keywords",
+                    e.target.value
+                      .split(/[,\n]/)
+                      .map((s) => s.trim())
+                      .filter(Boolean),
+                  )
+                }
+                placeholder={
+                  "competitor brand\nbroken phrase\noff-topic term"
+                }
+              />
+              <p className="text-[11px] text-zinc-500 mt-1">
+                Substring denylist (case-insensitive). Candidates
+                containing any of these strings are dropped.
+              </p>
+            </div>
+            <div>
+              <Label>Search-intent filter</Label>
+              <Select
+                value={form.topic_discovery_intent_filter || "any"}
+                onChange={(e) =>
+                  update(
+                    "topic_discovery_intent_filter",
+                    e.target.value as Settings["topic_discovery_intent_filter"],
+                  )
+                }
+              >
+                <option value="any">Any intent</option>
+                <option value="informational">Informational</option>
+                <option value="commercial">Commercial</option>
+                <option value="transactional">Transactional</option>
+                <option value="navigational">Navigational</option>
+              </Select>
+              <p className="text-[11px] text-zinc-500 mt-1">
+                Most blog topics live in &ldquo;Informational&rdquo;.
+              </p>
+            </div>
+            <div>
+              <Label>Max new requests per run</Label>
+              <Input
+                type="number"
+                min={1}
+                max={50}
+                value={form.topic_discovery_max_new_requests ?? 5}
+                onChange={(e) =>
+                  update(
+                    "topic_discovery_max_new_requests",
+                    Math.max(
+                      1,
+                      Math.min(50, Number(e.target.value) || 5),
+                    ),
+                  )
+                }
+              />
+              <p className="text-[11px] text-zinc-500 mt-1">
+                Cap to keep one run from flooding the queue. Picks the
+                highest-opportunity clusters first.
+              </p>
+            </div>
+            <div>
+              <Label>Minimum brand relevance (0–100)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                value={form.topic_discovery_min_relevance ?? 60}
+                onChange={(e) =>
+                  update(
+                    "topic_discovery_min_relevance",
+                    Math.max(
+                      0,
+                      Math.min(100, Number(e.target.value) || 0),
+                    ),
+                  )
+                }
+              />
+              <p className="text-[11px] text-zinc-500 mt-1">
+                LLM-judged relevance threshold. Clusters scoring below this
+                against your brand voice are dropped before requests get
+                created. 60 = strict on-brand; 40 = looser, picks up
+                awareness-stage topics.
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 rounded-md bg-zinc-50 border border-zinc-200 p-2.5 text-[11px] text-zinc-600">
+            <div className="font-medium text-zinc-700 mb-1">
+              For your scheduler (n8n / cron)
+            </div>
+            <div>
+              Discovery cron URL:{" "}
+              <code>POST /api/cron/topic-discovery?secret=…</code> — daily is
+              fine. Each run costs a single DataForSEO call (~$0.01–0.05)
+              plus one cheap LLM clustering call.
+            </div>
+          </div>
+        </div>
+        <p className="text-[11px] text-zinc-500 mt-4">
+          Once saved, open{" "}
+          <Link href="/admin/seo/keywords" className="underline">
+            Keyword opportunities
+          </Link>{" "}
+          to research topics ad-hoc, or use the <strong>Discover topics
+          now</strong> button on Overview to trigger a discovery run
+          manually.
+        </p>
+      </Card>
       )}
 
       {activeTab === "maintenance" && (

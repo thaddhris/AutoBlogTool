@@ -40,12 +40,12 @@ Hard rules:
  */
 export const OUTLINE_JSON_SCHEMA_BLOCK = `Produce blog post metadata and a section outline as JSON. Hard requirements:
 - "title_tag": SEO title, **20–60 chars**, primary keyword near the start.
-- "meta_description": **120–165 chars** (target 150–160), action-oriented, includes the primary keyword.
+- "meta_description": **HARD LIMIT 280 chars; target 150–160 chars** (anything past 160 gets truncated by Google in the SERP). Action-oriented, single sentence or two short ones, includes the primary keyword. Do NOT pad with brand boilerplate — count your characters and stop. Example for the right length: "Discover how predictive maintenance cuts downtime in cement plants by 30%. A practical guide to rotary kiln monitoring with Faclon Labs." (140 chars).
 - "h1": on-page headline, may differ from title_tag, **10–120 chars**.
 - "slug_seed" (optional): kebab-case, 3–5 words, keyword-led, e.g. "oee-basics-plant-managers".
 - "primary_keyword": single string, the head keyword.
 - "secondary_keywords": **3–6** related/LSI keywords, no overlap with primary.
-- "tldr": 2–3 sentence answer to the search intent, **80–500 chars**.
+- "tldr": The "Quick Answer" — a 40–60 word self-contained paragraph that directly answers the post's headline question. Must include the primary_keyword in the first sentence. This becomes the Speakable / AEO target in the rendered body (wrapped in <div class="quick-answer">) and is what AI search engines (ChatGPT, Perplexity, Gemini AI Overview) prefer to cite. Concrete, factual, no marketing fluff. **220–360 chars** (≈ 40–60 words).
 - "excerpt": 1–2 sentence hook for listing pages, **40–280 chars**.
 - "tags": **2–5** short tags.
 - "outline": **4–8** sections. Each has "heading" and **2–6** "bullets".
@@ -79,6 +79,15 @@ Topic / context: {{topic}}
 ## Source material
 {{source_block}}
 
+## Live SERP context (use this to design an outline that beats the current page-1 results)
+{{serp_block}}
+
+## SERP-aware outlining rules
+- The outline MUST cover every distinct angle from the top 10 organic results AND every People Also Ask question above. Treat that as the minimum semantic coverage required to rank.
+- Pick a primary_keyword that matches actual search intent visible in the SERP titles, not a brand slogan.
+- Aim higher than the median word count of the top 10 — match the deepest competitor's coverage and add what they're missing.
+- Add at least one section that answers a PAA question explicitly (verbatim phrasing is fine — it's how PAA snippets get won).
+
 {{json_schema}}`;
 
 export const DEFAULT_BODY_USER = `Brand: {{brand_name}}
@@ -91,6 +100,9 @@ Topic / context: {{topic}}
 ## Source material
 {{source_block}}
 
+## Live SERP context
+{{serp_block}}
+
 ## Approved h1
 {{h1}}
 
@@ -101,13 +113,49 @@ Topic / context: {{topic}}
 Approximately {{words_target}} words total.
 
 Now write the full blog post body in Markdown.
-- Open with a 1–2 paragraph intro that hooks the reader and previews the post. Do NOT include a "TL;DR" heading or block.
-- Follow the outline order. Each numbered item becomes an H2 (##). Use H3 (###) for sub-points if needed.
-- Include AT LEAST one bullet list AND one markdown table somewhere in the body.
-- Include 2–3 internal-link placeholders shaped like [[related: short topic or keyword]] — these will be resolved automatically by the platform.
-- End with a "## Key takeaways" bullet list (3–5 items) and a final CTA paragraph.
-- Do NOT include the title as an H1.
-- Do NOT include any text outside the markdown body (no JSON, no prefaces).`;
+
+## Answer-Engine Optimization (AEO) — STRUCTURE REQUIREMENTS
+
+1. **Quick Answer block (FIRST thing after the title):**
+   Open the post with a raw HTML wrapper exactly like this:
+   <div class="quick-answer">
+   <strong>Quick answer:</strong> <40–60 word self-contained answer that directly answers the title's question. No preamble, no "in this post we'll explore", no "let's dive in". Just the answer. Treat it as the paragraph an AI assistant should be able to read aloud verbatim or cite as the canonical answer.>
+   </div>
+
+   Rules for the Quick Answer:
+   • Exactly 40–60 words.
+   • Includes the primary keyword in the first sentence.
+   • Self-contained — readable without the rest of the post.
+   • Concrete, factual, no marketing fluff. No "leverage", "unlock", "revolutionize".
+   • IF a featured snippet is shown in the SERP context above, write this block so Google could swap it in as the new snippet.
+   • IF a Google AI Overview is shown above, make this block deeper and more specific than the AI Overview — include a concrete number, named standard, or named tool the AI Overview lacks.
+
+2. **Intro paragraph:** After the Quick Answer block, write 1–2 paragraphs that frame the topic for a reader who wants context. NOT a recap of the Quick Answer.
+
+3. **Body sections:** Follow the approved outline. Each numbered item becomes an H2 (##). Use H3 (###) for sub-points.
+   - Cover every PAA question listed in the SERP context above, either in the body sections or in the FAQ. Use the verbatim PAA phrasing as an H3 where natural — PAA boxes are won by question-shaped headings followed by tight 50–80 word answers.
+   - Include AT LEAST one bullet list AND one markdown table somewhere in the body.
+   - Include 2–3 internal-link placeholders shaped like [[related: short topic or keyword]] — these will be resolved automatically by the platform.
+
+4. **Key Takeaways block (REQUIRED, near the end):**
+   Wrap the closing summary list in a raw HTML wrapper:
+   <div class="key-takeaways">
+
+   ## Key takeaways
+   - Bullet 1 (1 sentence, concrete)
+   - Bullet 2 …
+   - 3 to 5 items total.
+
+   </div>
+
+   This wrapper lets voice assistants and AI search engines read the summary aloud via Speakable schema.
+
+5. **CTA paragraph** at the very end (one short paragraph, conversational).
+
+## Hard rules
+- Do NOT include the title as an H1 (the platform renders the H1 separately).
+- Do NOT include any text outside the markdown body (no JSON, no prefaces, no closing remarks).
+- Do NOT add a separate "## TL;DR" heading — the Quick Answer block above replaces it.`;
 
 // ─── available placeholder docs (used by the Settings UI) ───────────────────
 
@@ -135,6 +183,12 @@ export const OUTLINE_PLACEHOLDERS: PlaceholderDoc[] = [
     example: "Additional instructions: keep it under 1000 words\\n",
   },
   { name: "source_block", description: "Top FTS5-retrieved snippets from attached resources, or fallback corpus", example: "Snippet 1: …\\nSnippet 2: …" },
+  {
+    name: "serp_block",
+    description:
+      "DataForSEO SERP context for the primary keyword: top 10 organic results, People Also Ask, featured snippet, AI Overview, related searches. Empty when SERP analysis is disabled or fails. Place this where you want the writer to consider competitor coverage.",
+    example: "## SERP signals for \"predictive maintenance\"\\nTop 10 organic competitors:\\n  1. <Title> — <url>\\nPeople Also Ask:\\n  - …",
+  },
   { name: "json_schema", description: "Locked schema description + JSON shape contract. Drop where you want the schema requirement to appear.", example: "Produce blog post metadata… { \"title_tag\": string, … }" },
 ];
 

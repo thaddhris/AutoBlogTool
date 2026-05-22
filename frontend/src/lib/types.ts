@@ -53,6 +53,12 @@ export interface BlogRequest {
    *  this blog to this collection id instead of `settings.webflow_collection_id`.
    *  `null` / empty string means "use the global default from Settings". */
   collection_id: string | null;
+  /** Cached SERP analysis for the request's primary keyword. Populated by
+   *  the admin's "Analyze SERP" action or by the pipeline on first
+   *  generation. Schema mirrors lib/dataforseo.ts → SerpInsights — we keep
+   *  it as `unknown` here to avoid a circular type import with the lib
+   *  module. Callers cast to SerpInsights when they need it. */
+  serp_analysis: unknown | null;
   created_at: string;
   updated_at: string;
 }
@@ -278,6 +284,56 @@ export interface Settings {
    *  every AI-generated banner using a glassmorphism panel. Doesn't affect
    *  placeholder or pexels banners. */
   banner_title_overlay: boolean;
+  // ── SEO Intelligence (DataForSEO) ──────────────────────────────────────
+  /** DataForSEO API login (the email-shaped string they issue). */
+  dataforseo_login: string;
+  /** DataForSEO API password. Stored masked in the UI like any other secret. */
+  dataforseo_password: string;
+  /** DataForSEO location_code to query against by default (e.g. 2840 = US,
+   *  2356 = India). Per-search override available in the UI. */
+  dataforseo_location_code: number;
+  /** DataForSEO language_code (e.g. "en", "hi"). */
+  dataforseo_language_code: string;
+  /** Default filters applied to keyword-opportunity queries — admins can
+   *  still override per search. min_volume = monthly searches floor, max_kd
+   *  = keyword-difficulty ceiling (0-100). */
+  dataforseo_min_search_volume: number;
+  dataforseo_max_keyword_difficulty: number;
+  /** When true, the pipeline fetches a SERP analysis for the primary
+   *  keyword before writing and feeds it into outline + body prompts. Off
+   *  → pipeline behaves as it did pre-Phase-2 (no SERP context). Each
+   *  fetch costs ~$0.002 on DataForSEO; the result is cached on the
+   *  request so regenerates don't re-charge. */
+  serp_analysis_enabled: boolean;
+  // ── Autonomous topic discovery (Phase 4) ──────────────────────────────
+  /** Master switch. When false, manual + cron triggers exit early with a
+   *  "discovery disabled" log entry. */
+  topic_discovery_enabled: boolean;
+  /** Seed keyword phrases the discovery engine expands around. The whole
+   *  workflow does nothing if this is empty. Examples for Faclon:
+   *  "predictive maintenance", "OEE", "industrial AI", "IIoT". */
+  topic_discovery_seeds: string[];
+  /** Hard denylist — any candidate keyword containing one of these
+   *  substrings (case-insensitive) is dropped. Use for competitor brand
+   *  names, off-topic terms, etc. */
+  topic_discovery_excluded_keywords: string[];
+  /** Optional intent narrowing. "any" keeps all four DataForSEO intent
+   *  buckets. Otherwise candidates must match `search_intent`. */
+  topic_discovery_intent_filter:
+    | "any"
+    | "informational"
+    | "commercial"
+    | "transactional"
+    | "navigational";
+  /** Cap on requests auto-created per discovery run. Picks the highest-
+   *  scoring clusters first. */
+  topic_discovery_max_new_requests: number;
+  /** Minimum LLM-assigned brand-relevance score (0-100) a cluster must
+   *  have to qualify for auto Blog Request creation. Default 60 = the
+   *  cluster has to be at least "adjacent but defensible" to ship.
+   *  Raising this gives stricter on-brand picks; lowering broadens to
+   *  awareness-stage topics that share keywords with the seeds. */
+  topic_discovery_min_relevance: number;
   /** Max inline Pexels images to insert into the post body. 0 = off. The
    *  LLM is asked to drop [[image: query]] placeholders during body
    *  generation; the platform resolves them via Pexels (requires
@@ -417,6 +473,19 @@ export const DEFAULT_SETTINGS: Settings = {
   openai_api_key: "",
   openai_image_model: "gpt-image-1",
   banner_title_overlay: true,
+  dataforseo_login: "",
+  dataforseo_password: "",
+  dataforseo_location_code: 2840,
+  dataforseo_language_code: "en",
+  dataforseo_min_search_volume: 100,
+  dataforseo_max_keyword_difficulty: 60,
+  serp_analysis_enabled: true,
+  topic_discovery_enabled: false,
+  topic_discovery_seeds: [],
+  topic_discovery_excluded_keywords: [],
+  topic_discovery_intent_filter: "any",
+  topic_discovery_max_new_requests: 5,
+  topic_discovery_min_relevance: 60,
   inline_images_max: 0,
   public_base_url: "",
   webflow_token: "",

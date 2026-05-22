@@ -11,6 +11,8 @@ import { SeoScorePill } from "@/components/SeoScore";
 import RequestActions from "./RequestActions";
 import ResourcesPanel from "./ResourcesPanel";
 import BriefEditor, { type CollectionOption } from "./BriefEditor";
+import SerpAnalysisPanel from "./SerpAnalysisPanel";
+import type { SerpInsights } from "@/lib/dataforseo";
 
 export const dynamic = "force-dynamic";
 
@@ -138,6 +140,16 @@ export default async function RequestDetailPage({
           </Card>
         )}
       </div>
+
+      <SerpAnalysisPanel
+        requestId={req.id}
+        initialSerp={(req.serp_analysis as SerpInsights | null) ?? null}
+        defaultKeyword={req.keywords[0] || req.topic || null}
+        credsReady={Boolean(
+          (settings.dataforseo_login || "").trim() &&
+            (settings.dataforseo_password || "").trim(),
+        )}
+      />
 
       <ResourcesPanel requestId={req.id} initialResources={resources} />
 
