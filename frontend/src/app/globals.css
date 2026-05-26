@@ -30,3 +30,161 @@ html, body {
   border-radius: 4px;
   font-size: 0.9em;
 }
+.prose-blog a {
+  color: #2563eb;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+.prose-blog a:hover {
+  color: #1d4ed8;
+  text-decoration-thickness: 2px;
+}
+
+/* ── Table of Contents card (auto-generated, before first H2) ───────── */
+.prose-blog .toc-card {
+  margin: 1.5rem 0;
+  padding: 1rem 1.25rem;
+  border: 1px solid #e4e4e7;
+  background: #fafafa;
+  border-radius: 8px;
+}
+.prose-blog .toc-card__title {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #71717a;
+}
+.prose-blog .toc-card__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.prose-blog .toc-card__list li.toc-item {
+  margin: 0.25rem 0;
+  padding-left: 0;
+}
+.prose-blog .toc-card__list li.toc-item--sub {
+  padding-left: 1.25rem;
+  font-size: 0.92em;
+}
+.prose-blog .toc-card a { text-decoration: none; }
+.prose-blog .toc-card a:hover { text-decoration: underline; }
+
+/* ── Quick-answer block (already injected by writer / safety net) ──── */
+.prose-blog .quick-answer {
+  margin: 1rem 0 1.25rem;
+  padding: 0.85rem 1rem;
+  background: #eff6ff;
+  border-left: 3px solid #2563eb;
+  border-radius: 4px;
+  line-height: 1.55;
+}
+
+/* ── Key takeaways list at end of body ─────────────────────────────── */
+.prose-blog .key-takeaways {
+  margin: 1.5rem 0;
+  padding: 1rem 1.25rem;
+  background: #f0fdf4;
+  border-left: 3px solid #16a34a;
+  border-radius: 4px;
+}
+
+/* ── Mid-content CTA card ──────────────────────────────────────────── */
+.prose-blog .cta-card,
+.prose-blog .cta-banner {
+  margin: 2rem 0;
+  padding: 1.25rem 1.5rem;
+  background: #0f172a;
+  color: #f8fafc;
+  border-radius: 10px;
+}
+.prose-blog .cta-card__headline,
+.prose-blog .cta-banner__headline {
+  margin: 0 0 0.4rem 0;
+  font-size: 1.05rem;
+  color: #f8fafc;
+}
+.prose-blog .cta-card__body,
+.prose-blog .cta-banner__body {
+  margin: 0 0 0.85rem 0;
+  font-size: 0.95rem;
+  color: #cbd5e1;
+}
+.prose-blog .cta-card__button,
+.prose-blog .cta-banner__button {
+  display: inline-block;
+  padding: 0.55rem 1rem;
+  background: #2563eb;
+  color: #f8fafc !important;
+  border-radius: 6px;
+  font-weight: 600;
+  text-decoration: none !important;
+}
+.prose-blog .cta-card__button:hover,
+.prose-blog .cta-banner__button:hover {
+  background: #1d4ed8;
+}
+
+/* Final CTA banner is full-width and slightly chunkier than mid CTA. */
+.prose-blog .cta-banner {
+  padding: 1.5rem 1.75rem;
+}
+.prose-blog .cta-banner__headline {
+  font-size: 1.15rem;
+}
+
+/* ── Related articles list at end of body ──────────────────────────── */
+.prose-blog .related-articles {
+  margin: 2rem 0 1rem;
+  padding: 1rem 1.25rem;
+  border-top: 1px solid #e4e4e7;
+}
+.prose-blog .related-articles h2 {
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #71717a;
+  margin: 0 0 0.5rem 0;
+}
+.prose-blog .related-articles ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+  margin: 0;
+}
+
+/* ── Author bio block ──────────────────────────────────────────────── */
+.prose-blog .author-bio {
+  display: flex;
+  gap: 1rem;
+  margin: 2rem 0 1rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid #e4e4e7;
+  background: #fafafa;
+  border-radius: 8px;
+  align-items: flex-start;
+}
+.prose-blog .author-bio__avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.prose-blog .author-bio__body { flex: 1; }
+.prose-blog .author-bio__name {
+  margin: 0 0 0.2rem 0;
+  font-size: 0.95rem;
+}
+.prose-blog .author-bio__title {
+  margin: 0 0 0.4rem 0;
+  font-size: 0.85rem;
+  color: #71717a;
+}
+.prose-blog .author-bio__text {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}

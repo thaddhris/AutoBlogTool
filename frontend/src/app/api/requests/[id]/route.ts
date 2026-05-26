@@ -54,6 +54,22 @@ export async function PATCH(
   if (body.collection_id !== undefined)
     patch.collection_id =
       typeof body.collection_id === "string" ? body.collection_id : null;
+  // Per-request author bio override. Strings stored verbatim (with the
+  // empty-→-NULL normalization done by updateRequest); anything else
+  // forced to null so a buggy client can't write JSON blobs into these
+  // TEXT columns.
+  const authorCols = [
+    "author_bio_name",
+    "author_bio_title",
+    "author_bio_text",
+    "author_bio_image_url",
+    "author_bio_url",
+  ] as const;
+  for (const col of authorCols) {
+    if (body[col] !== undefined) {
+      patch[col] = typeof body[col] === "string" ? body[col] : null;
+    }
+  }
   const updated = updateRequest(id, patch);
   if (!updated) return Response.json({ error: "Not found" }, { status: 404 });
   return Response.json({ request: updated });

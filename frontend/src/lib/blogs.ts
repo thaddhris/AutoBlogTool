@@ -1,5 +1,6 @@
 import { db } from "./db";
 import {
+  AggregateRating,
   Blog,
   BlogStatus,
   FocusIntent,
@@ -41,6 +42,7 @@ interface BlogRow {
   word_count: number | null;
   seo_audit_json: string | null;
   llm_seo_audit_json: string | null;
+  aggregate_rating_json: string | null;
   status: string;
   scheduled_at: string | null;
   published_at: string | null;
@@ -65,6 +67,26 @@ function parseSeoAudit(s: string | null | undefined): SeoAudit | null {
     const v = JSON.parse(s);
     if (v && typeof v === "object" && typeof v.overall_score === "number") {
       return v as SeoAudit;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function parseAggregateRating(
+  s: string | null | undefined,
+): AggregateRating | null {
+  if (!s) return null;
+  try {
+    const v = JSON.parse(s);
+    if (
+      v &&
+      typeof v === "object" &&
+      typeof v.ratingValue === "number" &&
+      typeof v.ratingCount === "number"
+    ) {
+      return v as AggregateRating;
     }
     return null;
   } catch {
@@ -118,6 +140,7 @@ function rowToBlog(r: BlogRow): Blog {
     word_count: r.word_count,
     seo_audit: parseSeoAudit(r.seo_audit_json),
     llm_seo_audit: parseLlmSeoAudit(r.llm_seo_audit_json),
+    aggregate_rating: parseAggregateRating(r.aggregate_rating_json),
     status: r.status as BlogStatus,
     scheduled_at: r.scheduled_at,
     published_at: r.published_at,
@@ -189,6 +212,7 @@ export type BlogPatch = Partial<{
   word_count: number | null;
   seo_audit: SeoAudit | null;
   llm_seo_audit: LlmSeoAudit | null;
+  aggregate_rating: AggregateRating | null;
   status: BlogStatus;
   scheduled_at: string | null;
   published_at: string | null;
@@ -272,6 +296,14 @@ export function updateBlog(id: string, patch: BlogPatch): Blog | null {
       setField("llm_seo_audit_json", JSON.stringify(patch.llm_seo_audit));
       setField("llm_seo_audit_at", patch.llm_seo_audit.generated_at);
     }
+  }
+  if (patch.aggregate_rating !== undefined) {
+    setField(
+      "aggregate_rating_json",
+      patch.aggregate_rating === null
+        ? null
+        : JSON.stringify(patch.aggregate_rating),
+    );
   }
 
   if (!fields.length) return getBlog(id);

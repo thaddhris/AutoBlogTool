@@ -62,9 +62,14 @@ function lenBadge(value: string, [min, max]: [number, number]) {
 export default function BlogEditor({
   blog,
   siteUrl,
+  decoratedPreviewHtml,
 }: {
   blog: Blog;
   siteUrl: string;
+  /** Server-rendered HTML with TOC + CTAs + related + author bio applied,
+   *  matching what the Webflow publisher emits. Shown in the Preview tab
+   *  so authors see what readers will see. */
+  decoratedPreviewHtml: string;
 }) {
   const router = useRouter();
   const editable = blog.status === "draft" || blog.status === "scheduled";
@@ -196,6 +201,7 @@ export default function BlogEditor({
           slug={editing ? form.slug : blog.slug}
           siteUrl={siteUrl}
           publishedAt={blog.published_at}
+          decoratedPreviewHtml={editing ? null : decoratedPreviewHtml}
         />
         {editing && (
           <p className="text-[11px] text-zinc-500 mt-2">

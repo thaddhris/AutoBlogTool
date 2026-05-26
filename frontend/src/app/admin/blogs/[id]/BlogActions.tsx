@@ -41,15 +41,32 @@ export default function BlogActions({ blog }: { blog: Blog }) {
   const inWindow = blog.status === "draft" && Boolean(blog.scheduled_at);
   const isPublished = blog.status === "published";
 
-  async function publishNow() {
-    if (!confirm("Publish this blog now?")) return;
+  async function publishNow(force = false) {
+    if (!force && !confirm("Publish this blog now?")) return;
     setBusy("publish");
     try {
       const res = await fetch(`/api/blogs/${blog.id}/publish`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Publish failed");
+      if (!res.ok) {
+        // 422 with `gate: true` → the publish-time quality gate refused
+        // this post. Surface the reason and offer a one-click override.
+        if (res.status === 422 && json?.gate) {
+          if (
+            confirm(
+              `${json.error || "Quality gate failed"}\n\nPublish anyway?`,
+            )
+          ) {
+            await publishNow(true);
+            return;
+          }
+          return;
+        }
+        throw new Error(json.error || "Publish failed");
+      }
       router.refresh();
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
@@ -177,7 +194,7 @@ export default function BlogActions({ blog }: { blog: Blog }) {
           >
             {inWindow ? "Reschedule" : "Schedule"}
           </Button>
-          <Button onClick={publishNow} disabled={busy !== null}>
+          <Button onClick={() => publishNow(false)} disabled={busy !== null}>
             {busy === "publish" ? "Publishing…" : "Publish now"}
           </Button>
         </div>

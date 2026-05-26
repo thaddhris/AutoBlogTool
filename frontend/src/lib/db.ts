@@ -229,11 +229,44 @@ function migrate(d: Database.Database) {
   // staging collection, another to prod).
   addColumn(d, "blog_requests", "collection_id", "TEXT");
 
+  // ── Per-request author bio override (Settings default still applies when
+  // these columns are NULL). Lets the admin attribute one post to a
+  // different SME without changing the global E-E-A-T defaults. ──
+  addColumn(d, "blog_requests", "author_bio_name", "TEXT");
+  addColumn(d, "blog_requests", "author_bio_title", "TEXT");
+  addColumn(d, "blog_requests", "author_bio_text", "TEXT");
+  addColumn(d, "blog_requests", "author_bio_image_url", "TEXT");
+  addColumn(d, "blog_requests", "author_bio_url", "TEXT");
+
   // Cached DataForSEO SERP insights for the request's primary keyword.
   // Populated either by the admin clicking "Analyze SERP" on the request
   // page or by the pipeline on the first generation. Cached so regenerates
   // don't re-bill DataForSEO. Stored as the full SerpInsights JSON.
   addColumn(d, "blog_requests", "serp_analysis_json", "TEXT");
+
+  // ── Keyword research sessions ────────────────────────────────────────
+  // Every search on /admin/seo/keywords is persisted here so admins can
+  // revisit past research without re-billing DataForSEO. Ideas + filter
+  // config are kept verbatim, plus a free-form notes field for admin
+  // annotations.
+  d.exec(`
+    CREATE TABLE IF NOT EXISTS keyword_research_sessions (
+      id TEXT PRIMARY KEY,
+      seeds_json TEXT NOT NULL,
+      location_code INTEGER NOT NULL,
+      language_code TEXT NOT NULL,
+      min_volume INTEGER NOT NULL,
+      max_kd INTEGER NOT NULL,
+      limit_requested INTEGER NOT NULL,
+      ideas_json TEXT NOT NULL,
+      cost_usd REAL NOT NULL DEFAULT 0,
+      notes TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_kw_sessions_created_at
+      ON keyword_research_sessions(created_at DESC);
+  `);
 
   // LLM-powered SEO audit caches. Populated when the admin clicks "Run SEO
   // audit" on a blog; we cache so the editor doesn't burn tokens on every
@@ -244,6 +277,13 @@ function migrate(d: Database.Database) {
   addColumn(d, "blogs", "seo_audit_at", "TEXT");
   addColumn(d, "blogs", "llm_seo_audit_json", "TEXT");
   addColumn(d, "blogs", "llm_seo_audit_at", "TEXT");
+
+  // ── Optional AggregateRating attached to review/comparison posts. ────
+  // Populated by the pipeline when the post's title matches a review
+  // signal (e.g. "X vs Y", "best", "review") and the admin has opted in
+  // via settings.auto_aggregate_rating. Stored as the AggregateRating
+  // JSON-LD subtree so seo.ts can emit it verbatim.
+  addColumn(d, "blogs", "aggregate_rating_json", "TEXT");
 }
 
 export function logEvent(

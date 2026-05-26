@@ -10,6 +10,11 @@ interface RequestRow {
   instructions: string;
   tags_json: string | null;
   collection_id: string | null;
+  author_bio_name: string | null;
+  author_bio_title: string | null;
+  author_bio_text: string | null;
+  author_bio_image_url: string | null;
+  author_bio_url: string | null;
   serp_analysis_json: string | null;
   priority: number;
   status: string;
@@ -38,6 +43,11 @@ function rowToRequest(r: RequestRow): BlogRequest {
     instructions: r.instructions,
     tags: safeArray(r.tags_json ?? "[]"),
     collection_id: r.collection_id ?? null,
+    author_bio_name: r.author_bio_name ?? null,
+    author_bio_title: r.author_bio_title ?? null,
+    author_bio_text: r.author_bio_text ?? null,
+    author_bio_image_url: r.author_bio_image_url ?? null,
+    author_bio_url: r.author_bio_url ?? null,
     serp_analysis: parseJson<unknown>(r.serp_analysis_json),
     priority: r.priority,
     status: r.status as RequestStatus,
@@ -153,6 +163,11 @@ export function updateRequest(
     instructions: string;
     tags: string[];
     collection_id: string | null;
+    author_bio_name: string | null;
+    author_bio_title: string | null;
+    author_bio_text: string | null;
+    author_bio_image_url: string | null;
+    author_bio_url: string | null;
     serp_analysis: unknown | null;
     priority: number;
     status: RequestStatus;
@@ -192,6 +207,22 @@ export function updateRequest(
         ? patch.collection_id.trim() || null
         : null;
     values.push(v);
+  }
+  // Per-request author bio fields. Empty strings collapse to NULL so the
+  // renderer falls back to the global Settings defaults.
+  const authorCols = [
+    "author_bio_name",
+    "author_bio_title",
+    "author_bio_text",
+    "author_bio_image_url",
+    "author_bio_url",
+  ] as const;
+  for (const col of authorCols) {
+    if (patch[col] !== undefined) {
+      fields.push(`${col} = ?`);
+      const v = typeof patch[col] === "string" ? (patch[col] as string).trim() || null : null;
+      values.push(v);
+    }
   }
   if (patch.serp_analysis !== undefined) {
     fields.push("serp_analysis_json = ?");

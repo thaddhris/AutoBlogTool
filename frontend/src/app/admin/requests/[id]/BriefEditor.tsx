@@ -60,6 +60,17 @@ export default function BriefEditor({
   const [instructions, setInstructions] = useState(request.instructions);
   const [priority, setPriority] = useState(String(request.priority));
   const [collectionId, setCollectionId] = useState(request.collection_id ?? "");
+  // Per-request author bio override. Empty strings → fall back to the
+  // global Settings → SEO Intelligence → Author bio defaults.
+  const [authorName, setAuthorName] = useState(request.author_bio_name ?? "");
+  const [authorTitle, setAuthorTitle] = useState(
+    request.author_bio_title ?? "",
+  );
+  const [authorText, setAuthorText] = useState(request.author_bio_text ?? "");
+  const [authorImage, setAuthorImage] = useState(
+    request.author_bio_image_url ?? "",
+  );
+  const [authorUrl, setAuthorUrl] = useState(request.author_bio_url ?? "");
 
   function cancel() {
     setLabel(request.label);
@@ -69,6 +80,11 @@ export default function BriefEditor({
     setInstructions(request.instructions);
     setPriority(String(request.priority));
     setCollectionId(request.collection_id ?? "");
+    setAuthorName(request.author_bio_name ?? "");
+    setAuthorTitle(request.author_bio_title ?? "");
+    setAuthorText(request.author_bio_text ?? "");
+    setAuthorImage(request.author_bio_image_url ?? "");
+    setAuthorUrl(request.author_bio_url ?? "");
     setEditing(false);
   }
 
@@ -86,6 +102,11 @@ export default function BriefEditor({
           instructions,
           priority: Number(priority) || 0,
           collection_id: collectionId.trim() || null,
+          author_bio_name: authorName.trim() || null,
+          author_bio_title: authorTitle.trim() || null,
+          author_bio_text: authorText.trim() || null,
+          author_bio_image_url: authorImage.trim() || null,
+          author_bio_url: authorUrl.trim() || null,
         }),
       });
       const json = await res.json();
@@ -150,6 +171,37 @@ export default function BriefEditor({
           <div>
             <dt className="text-xs text-zinc-500">Priority</dt>
             <dd className="text-zinc-800">{request.priority}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-zinc-500">Author override</dt>
+            <dd className="text-zinc-800">
+              {request.author_bio_name ||
+              request.author_bio_title ||
+              request.author_bio_text ||
+              request.author_bio_image_url ||
+              request.author_bio_url ? (
+                <>
+                  <span className="font-medium">
+                    {request.author_bio_name || "(uses default name)"}
+                  </span>
+                  {request.author_bio_title ? (
+                    <span className="text-zinc-500">
+                      {" — "}
+                      {request.author_bio_title}
+                    </span>
+                  ) : null}
+                  {request.author_bio_text ? (
+                    <p className="text-[12px] text-zinc-600 mt-1 whitespace-pre-wrap">
+                      {request.author_bio_text}
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <span className="text-zinc-500 italic">
+                  Uses Settings → SEO Intelligence → Author bio default
+                </span>
+              )}
+            </dd>
           </div>
           <div>
             <dt className="text-xs text-zinc-500">Webflow collection</dt>
@@ -290,6 +342,65 @@ export default function BriefEditor({
             Higher numbers run first.
           </p>
         </div>
+        <div className="pt-4 mt-2 border-t border-zinc-200">
+          <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">
+            Author override (per request)
+          </div>
+          <p className="text-[11px] text-zinc-500 mb-3">
+            Any field left blank falls back to the global default in{" "}
+            <Link href="/admin/settings" className="underline">
+              Settings → SEO Intelligence → Author bio
+            </Link>
+            . Use this when one post should be attributed to a different
+            SME (e.g. a guest expert).
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <Label>Author name</Label>
+              <Input
+                value={authorName}
+                onChange={(e) => setAuthorName(e.target.value)}
+                placeholder="(uses default)"
+              />
+            </div>
+            <div>
+              <Label>Title / role</Label>
+              <Input
+                value={authorTitle}
+                onChange={(e) => setAuthorTitle(e.target.value)}
+                placeholder="(uses default)"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <div>
+              <Label>Photo URL</Label>
+              <Input
+                value={authorImage}
+                onChange={(e) => setAuthorImage(e.target.value)}
+                placeholder="(uses default)"
+              />
+            </div>
+            <div>
+              <Label>Profile URL</Label>
+              <Input
+                value={authorUrl}
+                onChange={(e) => setAuthorUrl(e.target.value)}
+                placeholder="(uses default)"
+              />
+            </div>
+          </div>
+          <div className="mt-3">
+            <Label>Bio text</Label>
+            <Textarea
+              value={authorText}
+              onChange={(e) => setAuthorText(e.target.value)}
+              rows={3}
+              placeholder="(uses default)"
+            />
+          </div>
+        </div>
+
         <div>
           <Label>Webflow collection</Label>
           {collections.length > 0 ? (

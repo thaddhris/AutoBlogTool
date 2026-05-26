@@ -201,6 +201,12 @@ export interface BodyEditorProps {
   slug: string;
   siteUrl: string;
   publishedAt: string | null;
+  /** Server-rendered HTML with TOC + CTAs + related-articles + author bio
+   *  applied, matching what the Webflow publisher emits. Used in the
+   *  Preview tab so authors see exactly what readers will see. Pass
+   *  `null` while the user is mid-edit (we can't decorate unsaved markdown
+   *  without a round-trip), and we'll fall back to plain marked.parse. */
+  decoratedPreviewHtml?: string | null;
 }
 
 type EditorTab = "rich" | "raw" | "preview" | "serp";
@@ -214,6 +220,7 @@ export default function BodyEditor({
   slug,
   siteUrl,
   publishedAt,
+  decoratedPreviewHtml,
 }: BodyEditorProps) {
   const [tab, setTab] = useState<EditorTab>(editable ? "rich" : "preview");
 
@@ -281,7 +288,15 @@ export default function BodyEditor({
   }
 
   // ── Preview HTML for the Preview tab ──
-  const previewHtml = useMemo(() => mdToHtml(value), [value]);
+  // Prefer the server-decorated HTML (TOC + CTAs + related + author bio)
+  // when the editor isn't editing, so the Preview matches what readers
+  // will see on the published site. While editing, fall back to a plain
+  // marked.parse of the live markdown — we can't run the decoration
+  // pipeline without round-tripping unsaved edits to the server.
+  const previewHtml = useMemo(() => {
+    if (decoratedPreviewHtml && !editable) return decoratedPreviewHtml;
+    return mdToHtml(value);
+  }, [value, decoratedPreviewHtml, editable]);
 
   // Tabs visible depend on editability.
   const tabs: { id: EditorTab; label: string; editOnly?: boolean }[] = [

@@ -103,6 +103,8 @@ Topic / context: {{topic}}
 ## Live SERP context
 {{serp_block}}
 
+{{exa_sources}}
+
 ## Approved h1
 {{h1}}
 
@@ -135,7 +137,8 @@ Now write the full blog post body in Markdown.
 3. **Body sections:** Follow the approved outline. Each numbered item becomes an H2 (##). Use H3 (###) for sub-points.
    - Cover every PAA question listed in the SERP context above, either in the body sections or in the FAQ. Use the verbatim PAA phrasing as an H3 where natural — PAA boxes are won by question-shaped headings followed by tight 50–80 word answers.
    - Include AT LEAST one bullet list AND one markdown table somewhere in the body.
-   - Include 2–3 internal-link placeholders shaped like [[related: short topic or keyword]] — these will be resolved automatically by the platform.
+   - Include 4–8 internal-link placeholders shaped like [[related: short topic or keyword]] — these will be resolved automatically by the platform to other published posts on this site. Spread them naturally through the body, not clustered.
+   - **External citations**: when the "Verified external sources" block above is populated, cite 3–5 of those sources INLINE in the body. Each citation MUST be a real markdown link of the form \`[anchor phrase](https://url-from-the-list)\` — the anchor phrase is part of your sentence (e.g. "industry analysis", "a recent BusinessInsider report"), NOT a label like "Source 1". NEVER write the literal text "[Source N]", "[1]", or any bracketed number — those render as plain text and look broken to readers. ONLY use URLs from that verified-sources block. If the block is empty, skip external citations entirely (do not hallucinate sources).
 
 4. **Key Takeaways block (REQUIRED, near the end):**
    Wrap the closing summary list in a raw HTML wrapper:
@@ -188,6 +191,12 @@ export const OUTLINE_PLACEHOLDERS: PlaceholderDoc[] = [
     description:
       "DataForSEO SERP context for the primary keyword: top 10 organic results, People Also Ask, featured snippet, AI Overview, related searches. Empty when SERP analysis is disabled or fails. Place this where you want the writer to consider competitor coverage.",
     example: "## SERP signals for \"predictive maintenance\"\\nTop 10 organic competitors:\\n  1. <Title> — <url>\\nPeople Also Ask:\\n  - …",
+  },
+  {
+    name: "exa_sources",
+    description:
+      "Verified authoritative URLs found by Exa AI for the primary + secondary keywords, each with 1–2 query-relevant highlights. The writer uses these for inline citations instead of hallucinating URLs. Empty fallback string when Exa is disabled or returns nothing — body prompt should still degrade gracefully.",
+    example: "## Verified external sources (real URLs found via Exa AI)\\nSource 1: <Title> — <url>\\n  ↳ <highlight>\\n  ↳ <highlight>\\nSource 2: …",
   },
   { name: "json_schema", description: "Locked schema description + JSON shape contract. Drop where you want the schema requirement to appear.", example: "Produce blog post metadata… { \"title_tag\": string, … }" },
 ];

@@ -101,6 +101,8 @@ function opportunityScore(k: KeywordIdea): number {
 async function clusterKeywords(
   candidates: KeywordIdea[],
   brandContext: string,
+  targetIndustries: string[],
+  nonTargetExamples: string[],
 ): Promise<ClusterPayload> {
   // Cap the LLM payload — 200 keywords is plenty for one cluster pass.
   const trimmed = candidates.slice(0, 200);
@@ -113,25 +115,52 @@ async function clusterKeywords(
     )
     .join("\n");
 
+  const verticalsList =
+    targetIndustries.length > 0
+      ? targetIndustries.map((v) => `  • ${v}`).join("\n")
+      : "  (no explicit verticals configured — judge by brand context only)";
+  const antiExamplesList =
+    nonTargetExamples.length > 0
+      ? nonTargetExamples.map((v) => `  ✗ ${v}`).join("\n")
+      : "  (no explicit anti-examples configured)";
+
   const payload = await llmJsonValidated<ClusterPayload>({
     system:
-      "You are an SEO topic strategist. You cluster keyword ideas into semantic groups, pick the single best keyword per group as the representative — judged by the volume + difficulty trade-off — AND score each cluster for relevance to a specific brand's domain. You return ONLY valid JSON exactly matching the requested schema.",
+      "You are a strict SEO topic gatekeeper for an industrial-software brand. You cluster keyword ideas into semantic groups, pick the best keyword per group as the representative, AND score each cluster for relevance to the brand's actual buyer + active verticals. You are intentionally pessimistic on relevance — the brand prefers an empty queue over off-brand content. You return ONLY valid JSON exactly matching the requested schema.",
     prompt: `## Brand context
 ${brandContext}
 
-## Task
-Group the following keywords into semantic clusters (one cluster per distinct topic). For each cluster:
+## Verticals the brand actively serves (RELEVANCE ANCHOR)
+${verticalsList}
 
-- "theme": a short 2–4 word label describing the cluster's topic
+## Anti-examples — topics that look adjacent but are NOT what the brand wants
+${antiExamplesList}
+
+## Task
+Group the candidate keywords into semantic clusters (one cluster per distinct topic). For each cluster:
+
+- "theme": a short 2–4 word label
 - "representative_keyword": the SINGLE keyword from the cluster most worth writing a blog post about. Trade off search volume against keyword difficulty — high volume + low difficulty wins. Prefer informational intent.
 - "all_keywords": every keyword that belongs to this cluster (verbatim)
-- "relevance_score": integer 0–100 — how relevant is the cluster's topic to the BRAND CONTEXT above?
-    - 90–100 = squarely in the brand's domain; a customer would expect to see this content on the brand's blog
-    - 60–89  = adjacent but defensible (related industry, related use-case, valid awareness-stage content)
-    - 30–59  = tangentially related, would feel off-brand if published
-    - 0–29   = clearly unrelated; the keyword just happens to share a word with the seeds (e.g. "industrial sewing machine" sharing "industrial"; "carpenter jobs" sharing "machinist")
-  Be strict — when in doubt, score lower. The brand would rather skip an off-topic keyword than publish irrelevant content.
-- "relevance_reason": one short sentence explaining the score, especially for borderline calls.
+- "relevance_score": integer 0–100. SCORE THE CLUSTER AGAINST THE VERTICALS LIST AND BRAND CONTEXT ABOVE. Use this rubric strictly:
+
+    90–100  Core on-brand. The topic is something the brand's actual buyer (a plant operations leader at one of the listed verticals) would actively search for and pay attention to. The cluster maps clearly to one of the verticals AND to the brand's platform capabilities.
+
+    75–89   Strong on-brand. A clear vertical match or a clear platform-capability match (predictive maintenance, condition monitoring, OEE, energy monitoring, asset performance, IIoT integration). Worth writing about.
+
+    60–74   Adjacent but uncertain. Industrial / manufacturing / AI flavour but no specific tie to the listed verticals or the platform's actual capabilities. Treat as risky.
+
+    40–59   Off-brand. The keyword merely shares a word with the seeds (e.g. "industrial" sharing with "industrial sewing machine"). Should not be published.
+
+    0–39    Clearly off-topic. Falls into one of the anti-examples (consumer goods, trades jobs, generic AI tools, brand-name lookups, academic definitions) or is unrelated.
+
+  HARD RULES:
+  • Any cluster that matches one of the anti-examples above SCORES 0–29, regardless of search volume.
+  • Any cluster whose representative keyword is a brand/product name from outside the brand's vertical SCORES 0–29.
+  • Any cluster whose topic does NOT mention or imply at least one of the listed verticals AND does NOT clearly tie to predictive maintenance / OEE / IIoT / condition monitoring / energy monitoring / asset performance / SCADA / factory automation scores at most 60.
+  • When in doubt, score LOWER. The brand prefers nothing over off-brand.
+
+- "relevance_reason": one short sentence explaining the score. For sub-75 scores, name the anti-example or missing vertical link.
 
 Aim for 5–15 distinct clusters. Score every cluster, even obvious off-topic ones — the calling code filters by threshold, not you.
 
@@ -342,9 +371,18 @@ export async function runTopicDiscovery(opts?: {
     .filter(Boolean)
     .join("\n");
 
+  const targetIndustries = settings.topic_discovery_target_industries || [];
+  const nonTargetExamples =
+    settings.topic_discovery_non_target_examples || [];
+
   let clusters: Cluster[] = [];
   try {
-    const payload = await clusterKeywords(filtered, brandContext);
+    const payload = await clusterKeywords(
+      filtered,
+      brandContext,
+      targetIndustries,
+      nonTargetExamples,
+    );
     const byKeyword = new Map(filtered.map((k) => [normalize(k.keyword), k]));
     for (const c of payload.clusters) {
       const repNorm = normalize(c.representative_keyword);

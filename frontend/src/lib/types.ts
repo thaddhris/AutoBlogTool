@@ -53,6 +53,16 @@ export interface BlogRequest {
    *  this blog to this collection id instead of `settings.webflow_collection_id`.
    *  `null` / empty string means "use the global default from Settings". */
   collection_id: string | null;
+  /** Per-request author bio override. Any field that is non-empty replaces
+   *  the corresponding `settings.author_bio_*` value when this request's
+   *  blog is rendered. Empty / null fields fall through to the global
+   *  Settings → SEO Intelligence → Author bio defaults so existing
+   *  setups keep working. */
+  author_bio_name: string | null;
+  author_bio_title: string | null;
+  author_bio_text: string | null;
+  author_bio_image_url: string | null;
+  author_bio_url: string | null;
   /** Cached SERP analysis for the request's primary keyword. Populated by
    *  the admin's "Analyze SERP" action or by the pipeline on first
    *  generation. Schema mirrors lib/dataforseo.ts → SerpInsights — we keep
@@ -175,6 +185,15 @@ export interface QualityWarning {
   value?: number | string | null;
 }
 
+/** Schema.org AggregateRating subset. Stored on review/comparison posts so
+ *  the BlogPosting JSON-LD can advertise a rating snippet in SERPs. */
+export interface AggregateRating {
+  ratingValue: number;
+  ratingCount: number;
+  bestRating?: number;
+  worstRating?: number;
+}
+
 export interface Blog {
   id: string;
   request_id: string;
@@ -211,6 +230,11 @@ export interface Blog {
   seo_audit: SeoAudit | null;
   /** Cached LLM / AI-crawlability SEO audit. Null until the admin runs one. */
   llm_seo_audit: LlmSeoAudit | null;
+  /** Optional AggregateRating attached only to review / comparison posts.
+   *  Populated by the pipeline when the title matches a review signal AND
+   *  `settings.auto_aggregate_rating` is on. Emitted verbatim in the
+   *  BlogPosting JSON-LD when present. */
+  aggregate_rating: AggregateRating | null;
   // ── Lifecycle ──
   status: BlogStatus;
   scheduled_at: string | null;
@@ -329,11 +353,132 @@ export interface Settings {
    *  scoring clusters first. */
   topic_discovery_max_new_requests: number;
   /** Minimum LLM-assigned brand-relevance score (0-100) a cluster must
-   *  have to qualify for auto Blog Request creation. Default 60 = the
-   *  cluster has to be at least "adjacent but defensible" to ship.
-   *  Raising this gives stricter on-brand picks; lowering broadens to
+   *  have to qualify for auto Blog Request creation. Default 75 = "core
+   *  on-brand only". Raising forces stricter picks; lowering broadens to
    *  awareness-stage topics that share keywords with the seeds. */
   topic_discovery_min_relevance: number;
+  /** Explicit list of industry verticals the brand actively serves
+   *  (e.g. "cement", "steel", "power generation", "oil & gas",
+   *  "manufacturing"). Used as a concrete criterion when the LLM scores
+   *  cluster relevance — a cluster about a vertical NOT on this list and
+   *  with no direct platform-product tie-in gets penalised hard. */
+  topic_discovery_target_industries: string[];
+  /** Explicit anti-examples of topic themes the brand does NOT want.
+   *  Showing these to the LLM as banned-zone examples (e.g. "consumer
+   *  appliances", "personal AI assistants", "trades jobs", "AI image
+   *  generators") prevents tangentially-adjacent topics from sneaking
+   *  through with inflated relevance scores. */
+  topic_discovery_non_target_examples: string[];
+  // ── SoftwareApplication JSON-LD (product / feature pages) ─────────────
+  /** When true, posts whose title or primary keyword matches any of the
+   *  signals below get an extra SoftwareApplication JSON-LD object
+   *  emitted alongside BlogPosting. Off → only article schema is shipped. */
+  software_application_enabled: boolean;
+  /** Case-insensitive substrings that flag a post as a product / feature
+   *  page (e.g. "OEE platform", "predictive maintenance software"). Empty
+   *  list → no detection, no schema emitted even when enabled. */
+  software_application_keywords: string[];
+  /** schema.org applicationCategory value. "BusinessApplication" is the
+   *  right default for B2B SaaS; "DeveloperApplication" for dev-tool
+   *  pages; "DesignApplication" for UX tools, etc. */
+  software_application_category: string;
+  /** schema.org operatingSystem value. Use "Web" for SaaS, or
+   *  "Web, iOS, Android" for cross-platform offerings. */
+  software_application_operating_system: string;
+  // ── Quality gate (enforced before publish) ────────────────────────────
+  /** Master switch. When true, every publish call (manual + cron) runs
+   *  the gate; a failing post is refused with a clear reason. Manual
+   *  admin actions can pass `force=true` to bypass. */
+  quality_gate_enabled: boolean;
+  /** Minimum word count. Posts below are rejected. 0 disables the check. */
+  min_word_count: number;
+  /** Maximum word count. Posts above are rejected as bloat. 0 disables. */
+  max_word_count: number;
+  /** Minimum overall SEO audit score (0–100). Only enforced when a cached
+   *  `seo_audit` exists on the blog — posts without an audit are allowed
+   *  through so admins can opt-in to the score check independently of
+   *  running audits. 0 disables. */
+  min_seo_score: number;
+  // ── Search-engine indexing pings (fired on successful publish) ────────
+  /** When true, the publisher submits the URL to Google Indexing API via
+   *  a service account JWT after Webflow returns 2xx. Off → no Google
+   *  ping. Requires `google_indexing_service_account_json` to be set. */
+  google_indexing_enabled: boolean;
+  /** Raw JSON content of a Google service-account key with the
+   *  `https://www.googleapis.com/auth/indexing` scope granted in Search
+   *  Console as a Verified Owner. Stored masked in the UI. */
+  google_indexing_service_account_json: string;
+  /** When true, the publisher pings IndexNow (covers Bing, Yandex, Seznam,
+   *  Naver) after Webflow returns 2xx. */
+  indexnow_enabled: boolean;
+  /** Hex/UUID-style key (8–128 chars) used by IndexNow. Must also be
+   *  uploaded to your site root as `<key>.txt` containing the key
+   *  verbatim — IndexNow re-fetches that file to verify ownership. */
+  indexnow_key: string;
+  // ── Table of contents (auto-generated, inserted before first H2) ──────
+  /** When true, the publisher injects a Table of Contents block before
+   *  the first H2 in the body, generated from every H2/H3 in the post.
+   *  Each heading also gets an `id` attribute so anchors work. */
+  toc_enabled: boolean;
+  // ── Mid-content CTA card (injected ~50% through body) ──────────────────
+  mid_cta_enabled: boolean;
+  mid_cta_headline: string;
+  mid_cta_body: string;
+  mid_cta_button_label: string;
+  mid_cta_url: string;
+  // ── Final CTA banner (rendered just before FAQ) ────────────────────────
+  final_cta_enabled: boolean;
+  final_cta_headline: string;
+  final_cta_body: string;
+  final_cta_button_label: string;
+  final_cta_url: string;
+  // ── E-E-A-T author bio (rendered at end of body) ───────────────────────
+  /** Author display name shown in the body author-bio block + JSON-LD
+   *  Person. Empty disables the bio block. */
+  author_bio_name: string;
+  /** Author title / credential line (e.g. "Director of Industrial AI,
+   *  Faclon Labs"). Shown under the name. */
+  author_bio_title: string;
+  /** Multi-sentence author bio (plain text or basic HTML). Rendered after
+   *  the body, before FAQ / Sources. */
+  author_bio_text: string;
+  /** Optional public-URL portrait. Renders as a small circular avatar in
+   *  the bio block + becomes the JSON-LD Person.image. */
+  author_bio_image_url: string;
+  /** Optional public profile URL (LinkedIn, About page, etc.). Becomes
+   *  the JSON-LD Person.url. */
+  author_bio_url: string;
+  // ── Related articles block (rendered at end of body) ───────────────────
+  /** When true, the publisher appends a "Related articles" list of the
+   *  N most thematically-related published posts at the end of the body
+   *  (after FAQ, before Sources). */
+  related_articles_enabled: boolean;
+  /** How many related posts to render. 3–4 is the SEO sweet spot. */
+  related_articles_count: number;
+  // ── AggregateRating auto-attach (review / comparison posts only) ───────
+  /** When true, the pipeline auto-detects review / comparison titles
+   *  (e.g. "X vs Y", "best ...", "review of ...") and attaches an
+   *  AggregateRating using the defaults below. Off → field stays null;
+   *  no rating is emitted in JSON-LD. */
+  auto_aggregate_rating: boolean;
+  /** Default ratingValue (1–5). */
+  default_rating_value: number;
+  /** Default ratingCount. */
+  default_rating_count: number;
+  // ── Exa AI external-source verification ────────────────────────────────
+  /** Exa AI key — used to replace LLM-hallucinated source URLs with real
+   *  authoritative pages found via Exa's neural search.
+   *  See https://docs.exa.ai/ for credentials. */
+  exa_api_key: string;
+  /** When true, the pipeline calls Exa after the outline pass to find
+   *  real authoritative sources for the post's primary keyword. The
+   *  hallucinated `outline.sources[]` gets replaced with the Exa results.
+   *  Cost ~$0.005 per generation. Off → behaviour reverts to LLM-only
+   *  source lists (which are often invented). */
+  exa_sources_enabled: boolean;
+  /** Target number of Exa source results to pull. 7–8 is the SEO sweet
+   *  spot for E-E-A-T signals on long-form blog content. */
+  exa_num_sources: number;
   /** Max inline Pexels images to insert into the post body. 0 = off. The
    *  LLM is asked to drop [[image: query]] placeholders during body
    *  generation; the platform resolves them via Pexels (requires
@@ -485,7 +630,71 @@ export const DEFAULT_SETTINGS: Settings = {
   topic_discovery_excluded_keywords: [],
   topic_discovery_intent_filter: "any",
   topic_discovery_max_new_requests: 5,
-  topic_discovery_min_relevance: 60,
+  // Raised from 60 → 75. The 60 ("adjacent but defensible") tier let too
+  // many off-brand topics through. 75 = "core on-brand", which is the
+  // expectation for autonomous publishing on a single-vertical SaaS blog.
+  topic_discovery_min_relevance: 75,
+  // Faclon Labs target industries (industrial AI / IIoT platform). Admins
+  // can edit per-install — these defaults reflect the platform's primary
+  // verticals and should be overridden for other brands.
+  topic_discovery_target_industries: [
+    "cement plants",
+    "steel and metals manufacturing",
+    "power generation and utilities",
+    "oil and gas",
+    "water and wastewater treatment",
+    "food and beverage manufacturing",
+    "pharmaceutical manufacturing",
+    "discrete manufacturing / factory automation",
+    "process industries / refineries",
+  ],
+  topic_discovery_non_target_examples: [
+    "consumer appliances or home gadgets",
+    "personal/general-purpose AI tools (chatbots, image generators, AI girlfriends)",
+    "trades or craft jobs (carpenter, plumber, blacksmith, sewing)",
+    "office / SaaS productivity tools unrelated to plant operations",
+    "academic concepts taught in schools (simple machines, what industrial means, definitions)",
+    "company-name lookups (e.g. specific brand-name factories or stores)",
+    "consumer services and retail (cobbler, blender, pool factory)",
+  ],
+  exa_api_key: "",
+  exa_sources_enabled: true,
+  exa_num_sources: 8,
+  software_application_enabled: false,
+  software_application_keywords: [],
+  software_application_category: "BusinessApplication",
+  software_application_operating_system: "Web",
+  quality_gate_enabled: false,
+  min_word_count: 800,
+  max_word_count: 3000,
+  min_seo_score: 0,
+  google_indexing_enabled: false,
+  google_indexing_service_account_json: "",
+  indexnow_enabled: false,
+  indexnow_key: "",
+  toc_enabled: true,
+  mid_cta_enabled: false,
+  mid_cta_headline: "See how Faclon Labs transforms plant operations",
+  mid_cta_body:
+    "Book a free 30-minute call with our industrial AI team and see a live demo of OEE, predictive maintenance, and energy analytics running on your plant data.",
+  mid_cta_button_label: "Book a free demo",
+  mid_cta_url: "",
+  final_cta_enabled: false,
+  final_cta_headline: "Ready to start measuring what matters?",
+  final_cta_body:
+    "Faclon Labs has deployed industrial AI across 100+ plants in cement, steel, power, and process industries. Talk to our team about your use case.",
+  final_cta_button_label: "Talk to our team",
+  final_cta_url: "",
+  author_bio_name: "",
+  author_bio_title: "",
+  author_bio_text: "",
+  author_bio_image_url: "",
+  author_bio_url: "",
+  related_articles_enabled: true,
+  related_articles_count: 4,
+  auto_aggregate_rating: false,
+  default_rating_value: 4.7,
+  default_rating_count: 24,
   inline_images_max: 0,
   public_base_url: "",
   webflow_token: "",

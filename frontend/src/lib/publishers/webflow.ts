@@ -2,6 +2,7 @@ import { marked } from "marked";
 import { getSettings } from "../settings";
 import { absolutizeBannerUrl } from "../images";
 import { getRequest } from "../requests";
+import { decorateBlogBodyHtml } from "../seoBlocks";
 import { Blog, ContentField, WebflowFieldMapEntry } from "../types";
 
 export interface PublishResult {
@@ -48,6 +49,9 @@ function buildBodyHtml(blog: Blog, opts: { includeFaq: boolean }): string {
       `<div class="quick-answer"><strong>Quick answer:</strong> ${escaped}</div>\n\n` +
       raw;
   }
+  // Apply every body-decoration block (TOC + mid-CTA + final-CTA +
+  // related + author bio) — same logic the admin Preview uses.
+  html = decorateBlogBodyHtml(html, blog);
   const parts = [html];
 
   if (opts.includeFaq && blog.faq.length > 0) {

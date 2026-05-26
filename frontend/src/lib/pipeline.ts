@@ -10,12 +10,22 @@ import { getRequest, updateRequest } from "./requests";
 import { getBlog, getBlogByRequest, updateBlog } from "./blogs";
 import { resolveInternalLinks } from "./internalLinks";
 import { runQualityChecks } from "./quality";
+import {
+  defaultAggregateRating,
+  looksLikeReviewContent,
+} from "./seoBlocks";
 import { Blog } from "./types";
 import {
   buildSerpPromptBlock,
   fetchSerpInsights,
   type SerpInsights,
 } from "./dataforseo";
+import {
+  buildSourcesPromptBlock,
+  ExaError,
+  fetchAuthoritativeSources,
+  type ExaSearchResult,
+} from "./exa";
 import {
   DEFAULT_BODY_SYSTEM,
   DEFAULT_BODY_USER,
@@ -304,6 +314,62 @@ export async function generateBlogForRequest(requestId: string): Promise<Blog> {
     outline.meta_description = trimmed;
   }
 
+  // ── Step 1.5: Exa external-source verification ────────────────────────
+  // The LLM happily invents URLs in `outline.sources`. Replace them with
+  // real, authoritative pages found via Exa for the post's primary
+  // keyword + top secondary keywords. The body-pass prompt also gets the
+  // top highlights so it can paraphrase / cite the real text instead of
+  // hallucinating numbers. Non-fatal — if Exa errors out we keep going
+  // with whatever the LLM produced (sometimes legit, often not).
+  let exaSources: ExaSearchResult[] = [];
+  if (
+    settings.exa_sources_enabled !== false &&
+    (settings.exa_api_key || "").trim()
+  ) {
+    try {
+      const wanted = Math.max(
+        3,
+        Math.min(20, settings.exa_num_sources ?? 8),
+      );
+      const result = await fetchAuthoritativeSources({
+        primaryKeyword: outline.primary_keyword,
+        secondaryKeywords: outline.secondary_keywords,
+        numResults: wanted,
+        type: "fast",
+      });
+      exaSources = result.sources;
+      if (exaSources.length > 0) {
+        // Replace whatever the LLM hallucinated with the real URLs.
+        outline.sources = exaSources.map((s) => s.url);
+        logEvent(
+          "exa.sources.ok",
+          `primary="${outline.primary_keyword}" sources=${exaSources.length} cost=$${result.cost_usd.toFixed(4)}`,
+          {
+            requestId,
+            payload: {
+              count: exaSources.length,
+              cost: result.cost_usd,
+              urls: exaSources.map((s) => s.url),
+            },
+          },
+        );
+      } else {
+        logEvent(
+          "exa.sources.empty",
+          `primary="${outline.primary_keyword}" — Exa returned no results; keeping LLM-generated sources`,
+          { requestId },
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logEvent("exa.sources.fail", msg, { requestId });
+      // Note: err might be an ExaError with a specific status; we just log
+      // and continue so a transient Exa failure doesn't sink the whole
+      // generation run.
+      void (err as ExaError); // keep import live
+    }
+  }
+
   // ── Step 2: full markdown body, guided by the approved outline ──
   const outlineForBody = outline.outline
     .map(
@@ -334,6 +400,9 @@ Drop ${Math.min(settings.inline_images_max, 5)} short [[image: search query]] pl
     outline: outlineForBody,
     words_target: String(settings.words_target),
     inline_image_instructions: inlineImageInstructions,
+    exa_sources: exaSources.length
+      ? buildSourcesPromptBlock(exaSources)
+      : "(No verified external sources available for this topic — use the existing source_block above; do NOT invent URLs.)",
   };
   const bodyTemplate =
     settings.body_user_template?.trim() || DEFAULT_BODY_USER;
@@ -459,6 +528,26 @@ Drop ${Math.min(settings.inline_images_max, 5)} short [[image: search query]] pl
     meta_description: outline.meta_description,
     blog_id: id,
   });
+
+  // ── Step 6.5: AggregateRating auto-attach for review/comparison posts ──
+  // Only fires when admin opted in via settings.auto_aggregate_rating AND
+  // the title pattern reads as a review / comparison / ranking. Manual
+  // posts (informational evergreen) get nothing — Google penalises rating
+  // markup that isn't tied to actual reviews.
+  let aggregateRating = null;
+  if (looksLikeReviewContent(outline.h1 || outline.title_tag)) {
+    aggregateRating = defaultAggregateRating();
+    if (aggregateRating) {
+      logEvent(
+        "aggregate_rating.attach",
+        `value=${aggregateRating.ratingValue} count=${aggregateRating.ratingCount}`,
+        { requestId, blogId: id },
+      );
+    }
+  }
+  if (aggregateRating) {
+    updateBlog(id, { aggregate_rating: aggregateRating });
+  }
 
   // ── Step 7: JSON-LD ──
   const persisted = getBlog(id);

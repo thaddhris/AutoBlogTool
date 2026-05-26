@@ -5,6 +5,7 @@ import {
 } from "@/lib/dataforseo";
 import { getSettings } from "@/lib/settings";
 import { logEvent } from "@/lib/db";
+import { saveKeywordSession } from "@/lib/keywordSessions";
 
 /**
  * Run a keyword-ideas query against DataForSEO and return a normalised list
@@ -93,11 +94,28 @@ export async function POST(request: NextRequest) {
       return true;
     });
 
+    // Persist the search so admins can revisit without re-billing
+    // DataForSEO. We save the *post-filter* ideas (what the UI actually
+    // showed), not the raw DataForSEO output — a future re-load shows the
+    // same filtered set as the original session and the cost figure tracks
+    // what was actually spent on this call.
+    const session = saveKeywordSession({
+      seeds,
+      location_code: locationCode,
+      language_code: languageCode,
+      min_volume: minVolume,
+      max_kd: maxKd,
+      limit_requested: limit,
+      ideas: filtered,
+      cost_usd: cost,
+    });
+
     logEvent(
       "seo.keyword_ideas.ok",
-      `seeds=${seeds.join(", ")} ideas=${filtered.length} cost=$${cost.toFixed(4)}`,
+      `seeds=${seeds.join(", ")} ideas=${filtered.length} cost=$${cost.toFixed(4)} session=${session.id}`,
       {
         payload: {
+          session_id: session.id,
           seeds,
           location_code: locationCode,
           language_code: languageCode,
@@ -109,6 +127,7 @@ export async function POST(request: NextRequest) {
     );
 
     return Response.json({
+      session_id: session.id,
       seeds,
       location_code: locationCode,
       language_code: languageCode,

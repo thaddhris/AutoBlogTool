@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { marked } from "marked";
 import { notFound } from "next/navigation";
 import { getBlog } from "@/lib/blogs";
 import { getRequest } from "@/lib/requests";
 import { getSettings } from "@/lib/settings";
+import { decorateBlogBodyHtml } from "@/lib/seoBlocks";
 import { BlogStatusBadge } from "@/components/StatusBadge";
 import { LlmSeoScorePill, SeoScorePill } from "@/components/SeoScore";
 import BlogActions from "./BlogActions";
@@ -20,6 +22,11 @@ export default async function BlogDetailPage({
   if (!blog) notFound();
   const req = getRequest(blog.request_id);
   const siteUrl = getSettings().site_url;
+  // Render the saved markdown the same way the Webflow publisher would —
+  // marked → decoratedBlogBodyHtml (TOC + CTAs + related + bio). Passed to
+  // BodyEditor's Preview tab so authors see exactly what readers will see.
+  const rawHtml = marked.parse(blog.content_md || "", { async: false }) as string;
+  const decoratedPreviewHtml = decorateBlogBodyHtml(rawHtml, blog);
 
   return (
     <div className="p-8 space-y-6 max-w-5xl">
@@ -51,7 +58,11 @@ export default async function BlogDetailPage({
         </div>
       </div>
 
-      <BlogEditor blog={blog} siteUrl={siteUrl} />
+      <BlogEditor
+        blog={blog}
+        siteUrl={siteUrl}
+        decoratedPreviewHtml={decoratedPreviewHtml}
+      />
     </div>
   );
 }

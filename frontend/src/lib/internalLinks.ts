@@ -90,6 +90,61 @@ export function findBestRelatedPost(
   return best;
 }
 
+/**
+ * Top-N published posts most thematically related to the given blog,
+ * scored by keyword overlap across primary_keyword / secondary_keywords /
+ * keywords_json / title. Used by the publisher to render a "Related
+ * articles" block at the end of the body. Excludes the blog itself.
+ *
+ * `needleTerms` is the bag of words we score against — usually built
+ * from the blog's own primary + secondary keywords + title.
+ */
+export function findRelatedPosts(
+  needleTerms: string[],
+  excludeBlogId: string | null,
+  limit: number,
+): ScoredPost[] {
+  const needleWords = new Set(
+    needleTerms.flatMap(toLowerWords).filter(Boolean),
+  );
+  if (needleWords.size === 0) return [];
+
+  const rows = db()
+    .prepare<[], PostRow>(
+      `SELECT id, slug, title, primary_keyword, keywords_json, secondary_keywords_json
+       FROM blogs
+       WHERE status = 'published'`,
+    )
+    .all();
+
+  const scored: ScoredPost[] = [];
+  for (const r of rows) {
+    if (excludeBlogId && r.id === excludeBlogId) continue;
+    const titleWords = new Set(toLowerWords(r.title));
+    const primary = r.primary_keyword
+      ? new Set(toLowerWords(r.primary_keyword))
+      : new Set<string>();
+    const secondary = new Set(
+      safeJsonArr(r.secondary_keywords_json).flatMap(toLowerWords),
+    );
+    const generic = new Set(
+      safeJsonArr(r.keywords_json).flatMap(toLowerWords),
+    );
+    let score = 0;
+    for (const w of needleWords) {
+      if (primary.has(w)) score += 4;
+      if (secondary.has(w)) score += 3;
+      if (generic.has(w)) score += 2;
+      if (titleWords.has(w)) score += 1;
+    }
+    if (score > 0) {
+      scored.push({ id: r.id, slug: r.slug, title: r.title, score });
+    }
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, Math.max(0, limit));
+}
+
 export interface ResolveResult {
   body: string;
   resolved: number; // count of placeholders that became links
